@@ -11,27 +11,29 @@ export * from './events.types';
 // Database types
 export * from './database.types';
 
+// ============== TABLE LIST TYPES ==============
+
+export interface TableListItem {
+    id: string;
+    name: string;
+    smallBlind: number;
+    bigBlind: number;
+    maxPlayers: number;
+    currentPlayers: number;
+    avgStack: number;
+    isPrivate: boolean;
+    isWaiting: boolean;
+}
+
 // ============== CONSTANTS ==============
 
-export const TABLE_LEVELS = {
-    micro: [
-        { sb: 10, bb: 20 },
-        { sb: 25, bb: 50 },
-        { sb: 50, bb: 100 },
-    ],
-    low: [
-        { sb: 100, bb: 200 },
-        { sb: 250, bb: 500 },
-    ],
-    mid: [
-        { sb: 500, bb: 1000 },
-        { sb: 1000, bb: 2000 },
-    ],
-    high: [
-        { sb: 5000, bb: 10000 },
-        { sb: 10000, bb: 20000 },
-    ],
-} as const;
+export const TABLE_LEVELS = [
+    { name: 'Micro', sb: 1, bb: 2, minBuyIn: 20, maxBuyIn: 100 },
+    { name: 'Low', sb: 5, bb: 10, minBuyIn: 20, maxBuyIn: 100 },
+    { name: 'Medium', sb: 25, bb: 50, minBuyIn: 20, maxBuyIn: 100 },
+    { name: 'High', sb: 100, bb: 200, minBuyIn: 20, maxBuyIn: 100 },
+    { name: 'VIP', sb: 500, bb: 1000, minBuyIn: 20, maxBuyIn: 100 },
+] as const;
 
 export const DEFAULT_CONFIG = {
     dailyBonus: 10000,

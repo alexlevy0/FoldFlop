@@ -15,6 +15,10 @@
     },
     "dependencies": {
         "@expo/vector-icons": "^14.0.0",
+        "@foldflop/ai-engine": "workspace:*",
+        "@foldflop/poker-engine": "workspace:*",
+        "@foldflop/shared": "workspace:*",
+        "@react-native-community/slider": "^5.1.1",
         "@supabase/supabase-js": "^2.39.0",
         "expo": "~50.0.0",
         "expo-constants": "~15.4.0",
@@ -31,10 +35,7 @@
         "react-native-reanimated": "~3.6.0",
         "react-native-safe-area-context": "4.8.2",
         "react-native-screens": "~3.29.0",
-        "react-native-web": "~0.19.6",
-        "@foldflop/poker-engine": "workspace:*",
-        "@foldflop/ai-engine": "workspace:*",
-        "@foldflop/shared": "workspace:*"
+        "react-native-web": "~0.19.6"
     },
     "devDependencies": {
         "@babel/core": "^7.20.0",

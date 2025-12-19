@@ -22,6 +22,9 @@ importers:
       '@foldflop/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@react-native-community/slider':
+        specifier: ^5.1.1
+        version: 5.1.1
       '@supabase/supabase-js':
         specifier: ^2.39.0
         version: 2.89.0
@@ -1375,6 +1378,9 @@ packages:
     resolution: {integrity: sha512-St/lyxQ//crrigfE2QCqmjDb0IH3S9nmolm0eqmCA1bB8WWUk5dpjTgQk6xxDxz+3YtMghDJkGZPK4AxDXT42g==}
     engines: {node: '>=18'}
     hasBin: true
+
+  '@react-native-community/slider@5.1.1':
+    resolution: {integrity: sha512-W98If/LnTaziU3/0h5+G1LvJaRhMc6iLQBte6UWa4WBIHDMaDPglNBIFKcCXc9Dxp83W+f+5Wv22Olq9M2HJYA==}
 
   '@react-native/assets-registry@0.73.1':
     resolution: {integrity: sha512-2FgAbU7uKM5SbbW9QptPPZx8N9Ke2L7bsHb+EhAanZjFZunA9PaYtyjUQ1s7HD+zDVqOQIvjkpXSv7Kejd2tqg==}
@@ -6679,6 +6685,8 @@ snapshots:
       - encoding
       - supports-color
       - utf-8-validate
+
+  '@react-native-community/slider@5.1.1': {}
 
   '@react-native/assets-registry@0.73.1': {}
 
