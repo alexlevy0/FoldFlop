@@ -1,0 +1,46 @@
+{
+    "extends": "../tsconfig.base.json",
+    "compilerOptions": {
+        "strict": true,
+        "jsx": "react-native",
+        "lib": [
+            "DOM",
+            "ESNext"
+        ],
+        "moduleResolution": "bundler",
+        "allowSyntheticDefaultImports": true,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ],
+            "@components/*": [
+                "./src/components/*"
+            ],
+            "@screens/*": [
+                "./src/screens/*"
+            ],
+            "@hooks/*": [
+                "./src/hooks/*"
+            ],
+            "@providers/*": [
+                "./src/providers/*"
+            ],
+            "@lib/*": [
+                "./src/lib/*"
+            ],
+            "@styles/*": [
+                "./src/styles/*"
+            ]
+        }
+    },
+    "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        ".expo/types/**/*.ts",
+        "expo-env.d.ts"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+}
