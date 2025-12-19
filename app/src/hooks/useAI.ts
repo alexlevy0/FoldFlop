@@ -72,7 +72,7 @@ export function useAI(
     return {
         suggestion,
         isFullAuto,
-        setFullAuto,
+        setFullAuto: setIsFullAuto,
         getSuggestionNow,
     };
 }

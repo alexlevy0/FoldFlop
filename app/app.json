@@ -39,8 +39,10 @@
             "typedRoutes": true
         },
         "extra": {
-            "supabaseUrl": "YOUR_SUPABASE_URL",
-            "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY"
+            "supabaseUrl": "http://127.0.0.1:54321",
+            "supabaseAnonKey": "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH",
+            "supabaseUrlProd": "https://gdcglyxrewlzgmyqxefv.supabase.co",
+            "supabaseAnonKeyProd": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkY2dseXhyZXdsemdteXF4ZWZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxNjE1NTQsImV4cCI6MjA4MTczNzU1NH0.G7oYvWoARUO1qPVEZF3D1qPlJcgKtIRFqvaDgnsT0pM"
         }
     }
 }

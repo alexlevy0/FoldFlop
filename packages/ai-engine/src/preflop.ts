@@ -126,7 +126,7 @@ export function getPreflopOpenSuggestion(
     const format = getTableFormat(playerCount);
 
     // Get the open chart for this format and position
-    const formatCharts = (preflopOpenCharts as Record<string, Record<string, OpenChart>>)[format];
+    const formatCharts = (preflopOpenCharts as any)[format];
     if (!formatCharts) {
         // Default to fold with unknown format
         return {
@@ -179,7 +179,7 @@ export function getPreflopVsRaiseSuggestion(
     const format = getTableFormat(playerCount);
 
     // Get the vs raise chart
-    const formatCharts = (preflopVsRaiseCharts as Record<string, Record<string, Record<string, VsRaiseChart>>>)[format];
+    const formatCharts = (preflopVsRaiseCharts as any)[format];
     if (!formatCharts) {
         return {
             action: 'fold',

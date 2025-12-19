@@ -12,6 +12,9 @@
 // Types
 export * from './types';
 
+// Re-export specific constants that are used by other packages
+export { RANK_VALUES, RANKS, SUITS, HAND_RANK_VALUES } from './types';
+
 // Deck utilities
 export {
     createDeck,

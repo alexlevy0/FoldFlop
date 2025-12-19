@@ -408,15 +408,15 @@ export {
     getPreflopVsRaiseSuggestion,
     getBBvsLimpersSuggestion,
     getHandNotation,
-    PreflopSuggestion,
 } from './preflop';
+export type { PreflopSuggestion } from './preflop';
 
 export {
     getPostflopSuggestion,
-    PostflopSuggestion,
     analyzeBoard,
     analyzeDraws,
 } from './postflop';
+export type { PostflopSuggestion } from './postflop';
 
 export {
     getBetSizing,
@@ -424,5 +424,5 @@ export {
     getOpenRaiseSizing,
     get3BetSizing,
     adjustForStackDepth,
-    SizingRecommendation,
 } from './sizing';
+export type { SizingRecommendation } from './sizing';
