@@ -94,6 +94,8 @@ export default function TableScreen() {
     const [actionHistory, setActionHistory] = useState<Array<{ key?: string; player: string; action: string; amount?: number; timestamp: number }>>([]);
     const aiIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const lastTurnIdRef = useRef<string>('');
+    const lastProcessedWinnerRef = useRef<string>('');
+    const lastProcessedActionKeyRef = useRef<string>('');
 
     // Generate a unique turn ID to detect when a new turn starts
     const phase = (tableState as any)?.phase ?? 'waiting';
@@ -243,17 +245,23 @@ export default function TableScreen() {
         // Action history will be updated via Realtime broadcast
     }, [performAction]);
 
-    // Add winner to action history
+    // Add winner to action history (Debounced/Deduped)
     useEffect(() => {
         if (lastWinner) {
+            const winKey = `${lastWinner.playerName}-${lastWinner.amount}`;
+            if (lastProcessedWinnerRef.current === winKey) return;
+            lastProcessedWinnerRef.current = winKey;
+
             setActionHistory(prev => [...prev.slice(-29), {
                 player: lastWinner.playerName,
                 action: `wins ${lastWinner.amount} chips! 🏆`,
                 timestamp: Date.now(),
+                key: `win-${Date.now()}`
             }]);
         }
     }, [lastWinner]);
 
+    // Sync action history from Realtime (all players' actions)
     // Sync action history from Realtime (all players' actions)
     useEffect(() => {
         if (lastAction) {
@@ -261,7 +269,14 @@ export default function TableScreen() {
 
             // Build unique action key using server timestamp
             const actionKey = `${lastAction.playerId}-${lastAction.action}-${lastAction.phase}-${lastAction.timestamp}`;
-            const debugInfo = `[${lastAction.phase}|S${lastAction.seat}]`;
+
+            // Ref-based deduplication
+            if (lastProcessedActionKeyRef.current === actionKey) return;
+            lastProcessedActionKeyRef.current = actionKey;
+
+            const timeStr = new Date(lastAction.timestamp).toLocaleTimeString();
+            const debugInfo = `[${lastAction.phase}|S${lastAction.seat}|${timeStr}]`;
+
             const actionText = lastAction.amount > 0
                 ? `${lastAction.action} ${lastAction.amount} ${debugInfo}`
                 : `${lastAction.action} ${debugInfo}`;
@@ -269,10 +284,7 @@ export default function TableScreen() {
             setActionHistory(prev => {
                 // Avoid duplicates using unique action key
                 const isDuplicate = prev.some(a => a.key === actionKey);
-                if (isDuplicate) {
-                    console.log('[ActionHistory] Duplicate detected, skipping:', actionKey);
-                    return prev;
-                }
+                if (isDuplicate) return prev;
 
                 // Add entry with unique key and sort by timestamp (oldest first)
                 const newHistory = [...prev, {
@@ -282,7 +294,6 @@ export default function TableScreen() {
                     timestamp: lastAction.timestamp,
                 }].sort((a, b) => a.timestamp - b.timestamp);
 
-                // Keep last 30 entries
                 return newHistory.slice(-30);
             });
         }
