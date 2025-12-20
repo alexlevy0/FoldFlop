@@ -14,6 +14,11 @@ interface WinnerInfo {
     playerId: string;
     playerName: string;
     amount: number;
+    hand?: {
+        rank: string;
+        cards: string[];
+        description: string;
+    } | null;
 }
 
 interface ActionInfo {
@@ -86,6 +91,12 @@ export function useTable(tableId: string): UseTableReturn {
         loadTable();
     }, [loadTable]);
 
+    // Keep a ref to tableState to access latest data in event callbacks without re-subscribing
+    const tableStateRef = useRef(tableState);
+    useEffect(() => {
+        tableStateRef.current = tableState;
+    }, [tableState]);
+
     // Subscribe to real-time events and auto-refresh
     useEffect(() => {
         const unsubscribe = subscribeToTable(tableId, (event: GameEvent) => {
@@ -113,13 +124,29 @@ export function useTable(tableId: string): UseTableReturn {
                 const eventAny = event as any;
                 if (eventAny.winners && eventAny.winners.length > 0) {
                     const winnerData = eventAny.winners[0];
+
+                    // Try to find player name from latest table state if missing in event
+                    let playerName = winnerData.playerName;
+                    if (!playerName || playerName === 'Player') {
+                        const currentPlayers = tableStateRef.current?.players || [];
+                        const p = currentPlayers.find((p: any) => p.id === winnerData.playerId);
+                        if (p) playerName = p.username;
+                    }
+                    // Fallback
+                    if (!playerName) playerName = 'Player';
+
                     setLastWinner({
                         playerId: winnerData.playerId,
-                        playerName: winnerData.playerName || 'Player',
+                        playerName: playerName,
                         amount: winnerData.amount ?? eventAny.pot ?? 0,
+                        hand: winnerData.hand ? {
+                            rank: winnerData.hand.rank,
+                            cards: winnerData.hand.cards.map((c: any) => c.rank + c.suit), // Map object back to string format if needed or reuse if strings
+                            description: winnerData.hand.description
+                        } : null
                     });
-                    // Clear winner after 5 seconds
-                    setTimeout(() => setLastWinner(null), 5000);
+                    // Clear winner after 10 seconds
+                    setTimeout(() => setLastWinner(null), 10000);
                 }
             }
 

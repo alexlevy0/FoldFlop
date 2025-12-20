@@ -182,7 +182,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         return state.tables.get(state.activeTableId) ?? null;
     }, [state.activeTableId, state.tables]);
 
-    const value: GameContextValue = {
+    const value = React.useMemo<GameContextValue>(() => ({
         state,
         addTable,
         removeTable,
@@ -192,7 +192,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         setFullAuto,
         handleEvent,
         getActiveTable,
-    };
+    }), [
+        state,
+        addTable,
+        removeTable,
+        setActiveTable,
+        setMyCards,
+        setAISuggestion,
+        setFullAuto,
+        handleEvent,
+        getActiveTable,
+    ]);
 
     return (
         <GameContext.Provider value={value}>

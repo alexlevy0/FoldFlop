@@ -113,23 +113,38 @@ export function startHand(state: GameState): GameState {
  */
 function postBlinds(state: GameState): GameState {
     const newState = { ...state };
-    const players = [...newState.players];
 
-    // Post small blind
-    const sbPlayer = players[state.smallBlindIndex];
+    // Calculate amounts first
+    const sbPlayer = state.players[state.smallBlindIndex];
     const sbAmount = Math.min(state.smallBlind, sbPlayer.stack);
-    sbPlayer.stack -= sbAmount;
-    sbPlayer.currentBet = sbAmount;
-    sbPlayer.totalBetThisHand = sbAmount;
-    if (sbPlayer.stack === 0) sbPlayer.isAllIn = true;
 
-    // Post big blind
-    const bbPlayer = players[state.bigBlindIndex];
+    const bbPlayer = state.players[state.bigBlindIndex];
     const bbAmount = Math.min(state.bigBlind, bbPlayer.stack);
-    bbPlayer.stack -= bbAmount;
-    bbPlayer.currentBet = bbAmount;
-    bbPlayer.totalBetThisHand = bbAmount;
-    if (bbPlayer.stack === 0) bbPlayer.isAllIn = true;
+
+    // Create new players array with immutable updates
+    const players = state.players.map((p, i) => {
+        if (i === state.smallBlindIndex) {
+            const stack = p.stack - sbAmount;
+            return {
+                ...p,
+                stack,
+                currentBet: sbAmount,
+                totalBetThisHand: sbAmount,
+                isAllIn: stack === 0
+            };
+        }
+        if (i === state.bigBlindIndex) {
+            const stack = p.stack - bbAmount;
+            return {
+                ...p,
+                stack,
+                currentBet: bbAmount,
+                totalBetThisHand: bbAmount,
+                isAllIn: stack === 0
+            };
+        }
+        return p;
+    });
 
     newState.players = players;
     newState.currentBet = state.bigBlind;
@@ -143,7 +158,8 @@ function postBlinds(state: GameState): GameState {
 function dealHoleCards(state: GameState): GameState {
     const newState = { ...state };
     let deck = [...state.deck];
-    const players = [...newState.players];
+    // We start with the existing players array from state
+    const players = [...state.players];
 
     // Deal one card at a time, starting from left of dealer
     for (let round = 0; round < 2; round++) {
@@ -155,10 +171,12 @@ function dealHoleCards(state: GameState): GameState {
                 const [cards, remaining] = dealCards(deck, 1);
                 deck = remaining;
 
-                if (!player.holeCards) {
-                    player.holeCards = [];
-                }
-                player.holeCards.push(cards[0]);
+                // Create a new player object with the new card
+                const currentHoleCards = player.holeCards ? [...player.holeCards] : [];
+                players[playerIndex] = {
+                    ...player,
+                    holeCards: [...currentHoleCards, cards[0]]
+                };
             }
         }
     }

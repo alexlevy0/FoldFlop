@@ -7,6 +7,7 @@ import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Ale
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { PokerTable, ActionButtons, AICopilotToggle } from '../../src/components/Table';
 import { TurnTimer } from '../../src/components/Table/TurnTimer';
+import { ShowdownOverlay } from '../../src/components/Table/ShowdownOverlay';
 import { useTable } from '../../src/hooks/useTable';
 import { useAuth } from '../../src/providers/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
@@ -110,8 +111,11 @@ export default function TableScreen() {
 
     // AI Auto-Play - detect new turn and start countdown
     useEffect(() => {
-        // If it's not our turn, AI is disabled, or already playing, clear everything
-        if (!isFullAuto || !isMyTurn || !isSeated || isAIPlaying) {
+        // If AI is currently playing, just wait (don't reset ref yet, otherwise we loop)
+        if (isAIPlaying) return;
+
+        // If it's not our turn, AI is disabled, or not seated, clear everything and reset ref
+        if (!isFullAuto || !isMyTurn || !isSeated) {
             if (aiIntervalRef.current) {
                 clearInterval(aiIntervalRef.current);
                 aiIntervalRef.current = null;
@@ -631,6 +635,16 @@ export default function TableScreen() {
                     />
                 </View>
             )}
+
+            {/* Cinematic Showdown Overlay */}
+            <ShowdownOverlay
+                isVisible={!!lastWinner}
+                winners={lastWinner ? [lastWinner] : []}
+                communityCards={tableState?.communityCards || []}
+                onComplete={() => {
+                    // Optional callback if we wanted to trigger something manually
+                }}
+            />
         </SafeAreaView>
     );
 }
