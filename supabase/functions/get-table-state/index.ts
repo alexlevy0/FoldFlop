@@ -124,7 +124,9 @@ Deno.serve(async (req: Request) => {
             pot: activeHand?.pot || 0,
             pots: activeHand?.pots || [],
             currentBet: activeHand?.current_bet || 0,
-            communityCards: activeHand?.community_cards || [],
+            communityCards: (activeHand?.community_cards || []).map((c: any) =>
+                typeof c === 'string' ? c : `${c.rank}${c.suit}`
+            ),
             dealerIndex: activeHand?.dealer_seat ?? -1,
             currentPlayerIndex: activeHand?.current_seat ?? -1,
             turnStartTime: activeHand?.turn_started_at || null,
@@ -138,7 +140,11 @@ Deno.serve(async (req: Request) => {
                 (ps: any) => ps.user_id === user.id
             );
             if (myPlayerState && !myPlayerState.is_folded) {
-                tableState.myCards = myPlayerState.hole_cards || [];
+                // Convert Card objects {rank, suit} to strings "Ah" for frontend
+                const cards = myPlayerState.hole_cards || [];
+                tableState.myCards = cards.map((c: any) =>
+                    typeof c === 'string' ? c : `${c.rank}${c.suit}`
+                );
             }
         }
 

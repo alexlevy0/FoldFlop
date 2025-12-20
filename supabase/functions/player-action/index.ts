@@ -217,8 +217,8 @@ function mapDbToEngine(dbHand: any): GameState {
         currentBet: p.current_bet,
         totalBetThisHand: p.total_bet,
         isFolded: p.is_folded,
-        is_all_in: p.is_all_in,
-        isSittingOut: false, // Default
+        isAllIn: p.is_all_in,
+        isSittingOut: p.is_sitting_out || false,
         isDisconnected: false,
     }));
 
@@ -300,8 +300,6 @@ function mapEngineToDb(gameState: GameState, originalHand: any): any {
 
         last_aggressor_id: gameState.lastAggressorId,
         last_raise_was_complete: gameState.lastRaiseWasComplete,
-        bb_has_acted: gameState.bbHasActed,
-
-        isHandComplete: gameState.isHandComplete
+        bb_has_acted: gameState.bbHasActed
     };
 }
