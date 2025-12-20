@@ -328,8 +328,8 @@ function mapEngineToDb(gameState: GameState, originalHand: any): any {
         current_bet: p.currentBet,
         total_bet: p.totalBetThisHand,
         is_folded: p.isFolded,
-        is_folded: p.isFolded,
         is_all_in: p.isAllIn,
+        is_sitting_out: p.isSittingOut, // Was missing!
         has_acted: p.hasActed,
     }));
 
