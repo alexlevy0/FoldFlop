@@ -562,6 +562,18 @@ export default function TableScreen() {
                     </View>
                 </View>
 
+                {/* AI Status Overlay - Top Right under header */}
+                {isSeated && isFullAuto && aiCountdown > 0 && isMyTurn && (
+                    <View style={styles.aiStatusOverlay}>
+                        <Text style={styles.aiStatusText}>
+                            🤖 AI will {aiPendingAction || 'play'} in {aiCountdown}s
+                        </Text>
+                        <Text style={styles.aiStatusSubtext}>
+                            Tap to override
+                        </Text>
+                    </View>
+                )}
+
                 {/* Hero status */}
                 {isSeated && heroPlayer && (
                     <View style={styles.heroStatus}>
@@ -647,9 +659,8 @@ export default function TableScreen() {
                             <Text style={styles.aiPlayingText}>🤖 AI is playing...</Text>
                         )}
                         {isFullAuto && aiCountdown > 0 && isMyTurn && (
-                            <Text style={styles.countdownText}>
-                                🤖 AI will {aiPendingAction || 'play'} in {aiCountdown}s - Play manually to override
-                            </Text>
+                            // Copilot moved to absolute overlay in header area (see below)
+                            null
                         )}
                     </View>
                 )}
@@ -1061,6 +1072,29 @@ const styles = StyleSheet.create({
         color: colors.dark.text,
         fontSize: fontSize.xs,
         fontWeight: '600',
+    },
+    aiStatusOverlay: {
+        position: 'absolute',
+        top: 60, // Below header
+        right: 10,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        padding: spacing.sm,
+        borderRadius: borderRadius.md,
+        borderWidth: 1,
+        borderColor: colors.dark.primary,
+        zIndex: 1000,
+        alignItems: 'flex-end',
+    },
+    aiStatusText: {
+        color: colors.dark.primary,
+        fontSize: fontSize.sm,
+        fontWeight: 'bold',
+        textAlign: 'right',
+    },
+    aiStatusSubtext: {
+        color: colors.dark.textSecondary,
+        fontSize: fontSize.xs,
+        textAlign: 'right',
     },
 });
 
