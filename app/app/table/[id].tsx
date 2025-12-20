@@ -10,11 +10,12 @@ import { TurnTimer } from '../../src/components/Table/TurnTimer';
 import { ShowdownOverlay } from '../../src/components/Table/ShowdownOverlay';
 import { useTable } from '../../src/hooks/useTable';
 import { useAuth } from '../../src/providers/AuthProvider';
+import { useAI } from '../../src/hooks/useAI';
 import { supabase } from '../../src/lib/supabase';
 import { colors, spacing, fontSize, borderRadius } from '../../src/styles/theme';
 import { evaluateHand, Card } from '@foldflop/poker-engine';
 
-// Helper component to run AI hook
+// Helper component to run AI hook - now with proper import
 function WaitAIHook({
     myCards,
     communityCards,
@@ -24,8 +25,16 @@ function WaitAIHook({
     turnId,
     heroSeatIndex,
     onSuggestion
-}: any) {
-    const { useAI } = require('../../src/hooks/useAI');
+}: {
+    myCards: string[];
+    communityCards: any[];
+    phase: string;
+    isMyTurn: boolean;
+    gameStateForAI: any;
+    turnId: string;
+    heroSeatIndex: number;
+    onSuggestion: (suggestion: any) => void;
+}) {
     const { suggestion } = useAI(
         myCards,
         communityCards,
@@ -36,11 +45,19 @@ function WaitAIHook({
         heroSeatIndex,
     );
 
+    // Use ref to track last processed suggestion to avoid loops
+    const lastProcessedRef = useRef<string>('');
+
     useEffect(() => {
         if (suggestion && isMyTurn && typeof onSuggestion === 'function') {
-            onSuggestion(suggestion);
+            // Only process if this is a new suggestion
+            const suggestionKey = `${suggestion.action}-${suggestion.amount || 0}-${turnId}`;
+            if (lastProcessedRef.current !== suggestionKey) {
+                lastProcessedRef.current = suggestionKey;
+                onSuggestion(suggestion);
+            }
         }
-    }, [suggestion, isMyTurn, onSuggestion]);
+    }, [suggestion, isMyTurn, onSuggestion, turnId]);
 
     return null;
 }
