@@ -317,13 +317,45 @@ export function processAction(
 function advancePhase(state: GameState): GameState {
     let newState = { ...state };
 
+    // Return uncalled bets before calculating pots
+    // Find the max bet that at least 2 players matched (or are all-in at)
+    const activePlayers = newState.players.filter(p => !p.isFolded && !p.isSittingOut);
+    const bets = activePlayers.map(p => p.totalBetThisHand);
+    bets.sort((a, b) => b - a); // Sort descending
+
+    if (bets.length >= 2) {
+        const secondHighestBet = bets[1]; // Second highest bet
+        const highestBetter = activePlayers.find(p => p.totalBetThisHand === bets[0]);
+
+        if (highestBetter && bets[0] > secondHighestBet) {
+            // There's an uncalled portion - return it
+            const uncalledAmount = bets[0] - secondHighestBet;
+            const playerIndex = newState.players.findIndex(p => p.id === highestBetter.id);
+
+            if (playerIndex !== -1) {
+                newState.players = newState.players.map((p, i) => {
+                    if (i === playerIndex) {
+                        return {
+                            ...p,
+                            stack: p.stack + uncalledAmount,
+                            totalBetThisHand: p.totalBetThisHand - uncalledAmount,
+                            currentBet: Math.max(0, p.currentBet - uncalledAmount),
+                        };
+                    }
+                    return p;
+                });
+                console.log(`Returned ${uncalledAmount} uncalled bet to player ${highestBetter.id}`);
+            }
+        }
+    }
+
     // Reset current bets and acted status for all players
     const players = newState.players.map(p => ({ ...p, currentBet: 0, hasActed: false }));
     newState.players = players;
     newState.currentBet = 0;
     newState.lastRaiseAmount = 0;
 
-    // Calculate pots
+    // Calculate pots (now with corrected bet amounts)
     newState.pots = calculatePots(players);
 
     switch (state.phase) {

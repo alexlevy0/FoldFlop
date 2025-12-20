@@ -78,6 +78,31 @@ Deno.serve(async (req: Request) => {
             }
         }
 
+        // Mark player as folded in any active hand (prevent ghost player)
+        const { data: activeHand } = await adminClient
+            .from('active_hands')
+            .select('id, player_states')
+            .eq('table_id', tableId)
+            .is('is_hand_complete', false)
+            .single();
+
+        if (activeHand && activeHand.player_states) {
+            // Update the leaving player's state to folded
+            const updatedPlayerStates = activeHand.player_states.map((p: any) => {
+                if (p.user_id === user.id) {
+                    return { ...p, is_folded: true, is_sitting_out: true };
+                }
+                return p;
+            });
+
+            await adminClient
+                .from('active_hands')
+                .update({ player_states: updatedPlayerStates })
+                .eq('id', activeHand.id);
+
+            console.log(`Marked player ${user.id} as folded in active hand ${activeHand.id}`);
+        }
+
         // Broadcast player left event
         const channel = adminClient.channel(`table:${tableId}`);
 
