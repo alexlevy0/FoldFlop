@@ -124,6 +124,7 @@ export function useTable(tableId: string): UseTableReturn {
             // Capture player_action events from all players for synced history
             if (event.type === 'player_action') {
                 const actionEvent = event as any;
+                console.log('[useTable] Received player_action:', actionEvent.playerName, actionEvent.action, actionEvent.phase);
                 setLastAction({
                     playerId: actionEvent.playerId,
                     playerName: actionEvent.playerName || 'Player',

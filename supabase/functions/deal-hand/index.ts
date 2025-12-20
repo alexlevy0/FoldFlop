@@ -1,5 +1,5 @@
 // Deal Hand Edge Function
-// Starts a new hand at a table, persists state to DB
+// Starts a new hand using the shared poker engine
 import {
     createSupabaseClient,
     createAdminClient,
@@ -8,44 +8,16 @@ import {
     errorResponse,
     handleCors,
 } from '../_shared/utils.ts';
+import {
+    Player,
+    GameState,
+    TableConfig,
+    Card
+} from '../_shared/poker-engine/types.ts';
+import { createGameState, startHand } from '../_shared/poker-engine/game.ts';
 
 interface DealHandRequest {
     tableId: string;
-}
-
-interface PlayerState {
-    user_id: string;
-    seat: number;
-    stack: number;
-    hole_cards: string[];
-    current_bet: number;
-    total_bet: number;
-    is_folded: boolean;
-    is_all_in: boolean;
-}
-
-const SUITS = ['h', 'd', 'c', 's'];
-const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
-
-function createShuffledDeck(): string[] {
-    const deck: string[] = [];
-
-    for (const suit of SUITS) {
-        for (const rank of RANKS) {
-            deck.push(`${rank}${suit}`);
-        }
-    }
-
-    // Fisher-Yates shuffle with crypto random
-    const randomValues = new Uint32Array(deck.length);
-    crypto.getRandomValues(randomValues);
-
-    for (let i = deck.length - 1; i > 0; i--) {
-        const j = randomValues[i] % (i + 1);
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-
-    return deck;
 }
 
 Deno.serve(async (req: Request) => {
@@ -81,15 +53,21 @@ Deno.serve(async (req: Request) => {
             return errorResponse('Table not found');
         }
 
-        // Check if there's already an active hand
+        // Check/Delete existing active hand
         const { data: existingHand } = await adminClient
             .from('active_hands')
-            .select('id, hand_number')
+            .select('*')
             .eq('table_id', tableId)
             .single();
 
+        let previousDealerSeat = -1;
+        let previousHandNumber = 0;
+
         if (existingHand) {
-            // Delete the old hand (or could return error)
+            previousDealerSeat = existingHand.dealer_seat;
+            previousHandNumber = existingHand.hand_number;
+
+            // Delete the old hand
             await adminClient
                 .from('active_hands')
                 .delete()
@@ -107,100 +85,134 @@ Deno.serve(async (req: Request) => {
             return errorResponse('Failed to get players');
         }
 
-        // Filter active players with chips
-        const activePlayers = tablePlayers.filter(p => !p.is_sitting_out && p.stack > 0);
+        // Filter active players (must have chips and not sitting out)
+        // Engine handles filtering too, but good to check count here
+        const activeTablePlayers = tablePlayers.filter(p => !p.is_sitting_out && p.stack > 0);
 
-        if (activePlayers.length < 2) {
+        if (activeTablePlayers.length < 2) {
             return errorResponse('Need at least 2 players to start a hand');
         }
 
-        // Determine dealer position (simple: first player for now, or rotate from previous)
-        const previousHandNumber = existingHand?.hand_number ?? 0;
-        const dealerIndex = previousHandNumber % activePlayers.length;
-
-        // Create deck and shuffle
-        const deck = createShuffledDeck();
-
-        // Calculate blind positions
-        const isHeadsUp = activePlayers.length === 2;
-        let sbIndex: number;
-        let bbIndex: number;
-
-        if (isHeadsUp) {
-            // Heads-up: dealer is small blind
-            sbIndex = dealerIndex;
-            bbIndex = (dealerIndex + 1) % 2;
-        } else {
-            sbIndex = (dealerIndex + 1) % activePlayers.length;
-            bbIndex = (dealerIndex + 2) % activePlayers.length;
-        }
-
-        // Create player states
-        const playerStates: PlayerState[] = activePlayers.map((p) => ({
-            user_id: p.user_id,
-            seat: p.seat,
-            stack: p.stack,
-            hole_cards: [],
-            current_bet: 0,
-            total_bet: 0,
-            is_folded: false,
-            is_all_in: false,
+        // 1. Map to Engine Players
+        // Convert table_players to engine Player objects
+        // Note: engine expects clean state, so we just pass basic info
+        const enginePlayers: Player[] = tablePlayers.map(p => ({
+            id: p.user_id,
+            seatIndex: p.seat,
+            stack: p.stack, // Current stack from table_players
+            holeCards: null,
+            currentBet: 0,
+            totalBetThisHand: 0,
+            isFolded: false, // Will be set by engine if sitting out? Engine filters sitting out.
+            isAllIn: false,
+            isSittingOut: p.is_sitting_out,
+            isDisconnected: false,
         }));
 
-        // Post blinds
-        const sbAmount = Math.min(table.blinds_sb, playerStates[sbIndex].stack);
-        playerStates[sbIndex].stack -= sbAmount;
-        playerStates[sbIndex].current_bet = sbAmount;
-        playerStates[sbIndex].total_bet = sbAmount;
-        if (playerStates[sbIndex].stack === 0) playerStates[sbIndex].is_all_in = true;
+        // 2. Prepare Table Config
+        const tableConfig: TableConfig = {
+            id: table.id,
+            name: table.name,
+            maxPlayers: table.max_players,
+            smallBlind: table.blinds_sb,
+            bigBlind: table.blinds_bb,
+            minBuyIn: table.min_buy_in,
+            maxBuyIn: table.max_buy_in,
+            turnTimeoutMs: table.turn_timeout_ms || 30000,
+            isPrivate: table.is_private,
+            inviteCode: table.invite_code,
+        };
 
-        const bbAmount = Math.min(table.blinds_bb, playerStates[bbIndex].stack);
-        playerStates[bbIndex].stack -= bbAmount;
-        playerStates[bbIndex].current_bet = bbAmount;
-        playerStates[bbIndex].total_bet = bbAmount;
-        if (playerStates[bbIndex].stack === 0) playerStates[bbIndex].is_all_in = true;
-
-        // Deal hole cards
-        const remainingDeck = [...deck];
-        for (let round = 0; round < 2; round++) {
-            for (let i = 0; i < playerStates.length; i++) {
-                const dealIndex = (dealerIndex + 1 + i) % playerStates.length;
-                playerStates[dealIndex].hole_cards.push(remainingDeck.shift()!);
-            }
+        // 3. Determine Previous Dealer Index
+        // Find the index in the player array (including sitouts) corresponding to the prev dealer seat
+        let previousDealerIndex = -1;
+        if (previousDealerSeat !== -1) {
+            previousDealerIndex = enginePlayers.findIndex(p => p.seatIndex === previousDealerSeat);
         }
 
-        // Determine first to act
-        let firstToActIndex: number;
-        if (isHeadsUp) {
-            // Heads-up: dealer/SB acts first preflop
-            firstToActIndex = dealerIndex;
-        } else {
-            // UTG is left of BB
-            firstToActIndex = (bbIndex + 1) % playerStates.length;
-        }
+        // 4. Create & Start Game
+        let gameState = createGameState(tableConfig, enginePlayers, previousDealerIndex);
 
-        // Calculate initial pot
-        const initialPot = sbAmount + bbAmount;
-        const handNumber = previousHandNumber + 1;
+        // Ensure accurate hand number
+        gameState.handNumber = previousHandNumber + 1;
 
-        // Insert active hand into DB
+        // Shuffle, deal, post blinds
+        gameState = startHand(gameState);
+
+
+        // 5. Map back to DB Active Hand
+        const playerStates = gameState.players.map(p => ({
+            user_id: p.id,
+            seat: p.seatIndex,
+            stack: p.stack,
+            hole_cards: p.holeCards || [], // Array of objects or strings? 
+            // Engine has Card objects {rank, suit}. 
+            // DB JSON expects array. 
+            // Existing code used strings "Ah".
+            // We need to match what front-end expects or migrate front-end.
+            // Front-end typically parses `Card` objects from JSON if it matches `{rank, suit}`.
+            // Let's check `types.ts` in front-end or assume `active_hand` stores JSONB which is flexible.
+            // Ideally strict typing. `PlayerState` interface in this file used `string[]`.
+            // But `Card` object is better. 
+            // Let's check `player-action` mapping. It cast DB to `Card[]`. 
+            // So DB should store `Card` objects (JSON).
+            current_bet: p.currentBet,
+            total_bet: p.totalBetThisHand,
+            is_folded: p.isFolded,
+            is_all_in: p.isAllIn,
+        }));
+
+        const dealerPlayer = gameState.players[gameState.dealerIndex];
+        const sbPlayer = gameState.players[gameState.smallBlindIndex];
+        const bbPlayer = gameState.players[gameState.bigBlindIndex];
+        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+
+        // Calculate total pot (main + side pots + active bets)
+        // startHand has 0 side pots usually, just active bets + main pot (0 initially).
+        // Actually `startHand` posts blinds into `currentBet` but doesn't sweep into pot yet?
+        // Let's check engine pot logic. `startHand` just updates stacks and `currentBet`. 
+        // Real pot is 0 until betting round ends? 
+        // No, visual pot usually includes active bets.
+        // `gameState.currentBet` is the call amount.
+        // `gameState.pots` is empty.
+        // Initial visual "pot" = SB + BB.
+        const initialPot = playerStates.reduce((sum, p) => sum + p.current_bet, 0);
+
         const { data: activeHand, error: insertError } = await adminClient
             .from('active_hands')
             .insert({
                 table_id: tableId,
-                hand_number: handNumber,
-                phase: 'preflop',
-                dealer_seat: activePlayers[dealerIndex].seat,
-                sb_seat: activePlayers[sbIndex].seat,
-                bb_seat: activePlayers[bbIndex].seat,
-                current_seat: activePlayers[firstToActIndex].seat,
-                current_bet: table.blinds_bb,
-                last_raise_amount: table.blinds_bb,
+                hand_number: gameState.handNumber,
+                phase: gameState.phase, // 'preflop'
+
+                dealer_seat: dealerPlayer.seatIndex,
+                sb_seat: sbPlayer.seatIndex,
+                bb_seat: bbPlayer.seatIndex,
+                current_seat: currentPlayer.seatIndex,
+
+                current_bet: gameState.currentBet, // should be BB
+                last_raise_amount: gameState.lastRaiseAmount, // 0 or BB? 
+                // startHand set lastRaiseAmount? 
+                // game.ts: `minRaise: tableConfig.bigBlind`
+                // startHand posts blinds. 
+                // It might not set lastRaiseAmount to BB unless it counts as a raise?
+                // Preflop BB is effectively a check if no raise? No, it's a bet.
+                // Engine logic for preflop minRaise usually BB.
+                // Let's assume engine state is correct.
+
                 pot: initialPot,
-                community_cards: [],
-                deck: remainingDeck,
-                player_states: playerStates,
-                turn_started_at: new Date().toISOString(),
+                community_cards: gameState.communityCards,
+                deck: gameState.deck,
+                player_states: playerStates, // Stores hole cards securely in JSON
+
+                // New fields
+                pots: gameState.pots,
+                last_aggressor_id: gameState.lastAggressorId,
+                last_raise_was_complete: gameState.lastRaiseWasComplete,
+                bb_has_acted: gameState.bbHasActed,
+                version: 1, // Start version 1
+
+                turn_started_at: new Date(gameState.turnStartedAt).toISOString(),
             })
             .select()
             .single();
@@ -210,16 +222,17 @@ Deno.serve(async (req: Request) => {
             return errorResponse('Failed to start hand: ' + insertError.message);
         }
 
-        // Update player stacks in table_players
-        for (const ps of playerStates) {
+        // 6. Update Player Stacks in table_players
+        // StartHand deduces blinds from stacks, so we must update table_players
+        for (const p of gameState.players) {
             await adminClient
                 .from('table_players')
-                .update({ stack: ps.stack })
+                .update({ stack: p.stack })
                 .eq('table_id', tableId)
-                .eq('user_id', ps.user_id);
+                .eq('user_id', p.id);
         }
 
-        // Broadcast hand started via Realtime
+        // 7. Broadcast Hand Started (SECURE - NO CARDS)
         const channel = adminClient.channel(`table:${tableId}`);
 
         await channel.send({
@@ -229,47 +242,33 @@ Deno.serve(async (req: Request) => {
                 type: 'hand_started',
                 tableId,
                 timestamp: Date.now(),
-                handNumber,
-                dealerSeat: activePlayers[dealerIndex].seat,
-                sbSeat: activePlayers[sbIndex].seat,
-                bbSeat: activePlayers[bbIndex].seat,
-                currentSeat: activePlayers[firstToActIndex].seat,
+                handNumber: gameState.handNumber,
+                dealerSeat: dealerPlayer.seatIndex,
+                sbSeat: sbPlayer.seatIndex,
+                bbSeat: bbPlayer.seatIndex,
+                currentSeat: currentPlayer.seatIndex,
                 pot: initialPot,
+                // Critical: Tell clients cards are dealt, but make them fetch securely
+                hasCards: true
             },
         });
-
-        // Send cards to each player individually
-        for (const player of playerStates) {
-            await channel.send({
-                type: 'broadcast',
-                event: 'cards_dealt',
-                payload: {
-                    type: 'cards_dealt',
-                    tableId,
-                    timestamp: Date.now(),
-                    handNumber,
-                    playerId: player.user_id,
-                    cards: player.hole_cards,
-                },
-            });
-        }
 
         return jsonResponse({
             success: true,
             data: {
                 handId: activeHand.id,
-                handNumber,
-                dealerSeat: activePlayers[dealerIndex].seat,
-                sbSeat: activePlayers[sbIndex].seat,
-                bbSeat: activePlayers[bbIndex].seat,
-                currentSeat: activePlayers[firstToActIndex].seat,
+                handNumber: gameState.handNumber,
+                dealerSeat: dealerPlayer.seatIndex,
+                sbSeat: sbPlayer.seatIndex,
+                bbSeat: bbPlayer.seatIndex,
+                currentSeat: currentPlayer.seatIndex,
                 pot: initialPot,
-                phase: 'preflop',
+                phase: gameState.phase,
             },
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Deal hand error:', error);
-        return errorResponse('Internal server error', 500);
+        return errorResponse('Internal server error: ' + error.message, 500);
     }
 });

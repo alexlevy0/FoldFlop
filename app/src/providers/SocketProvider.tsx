@@ -18,6 +18,7 @@ const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
     const channelsRef = useRef<Map<string, RealtimeChannel>>(new Map());
+    const callbacksRef = useRef<Map<string, (event: GameEvent) => void>>(new Map());
     const [isConnected, setIsConnected] = React.useState(true);
 
     // Cleanup on unmount
@@ -27,6 +28,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
                 supabase.removeChannel(channel);
             });
             channelsRef.current.clear();
+            callbacksRef.current.clear();
         };
     }, []);
 
@@ -36,42 +38,40 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     ) => {
         const channelName = `table:${tableId}`;
 
-        // Check if already subscribed
+        // Always update callback to latest
+        callbacksRef.current.set(channelName, onEvent);
+
+        // If already subscribed, don't create new channel, but callback is updated
         if (channelsRef.current.has(channelName)) {
-            console.log(`Already subscribed to ${channelName}`);
-            return () => { };
+            console.log(`[Socket] Already subscribed to ${channelName}, callback updated`);
+            return () => {
+                // Don't unsubscribe channel on cleanup, just remove callback
+                callbacksRef.current.delete(channelName);
+            };
         }
 
+        console.log(`[Socket] Creating new subscription to ${channelName}`);
+
+        // Wrapper that always uses latest callback
+        const forwardEvent = (payload: any) => {
+            const callback = callbacksRef.current.get(channelName);
+            if (callback) {
+                callback(payload as GameEvent);
+            }
+        };
+
         const channel = supabase.channel(channelName)
-            .on('broadcast', { event: 'player_joined' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'player_left' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'hand_started' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'cards_dealt' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'player_action' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'phase_changed' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'hand_complete' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'player_timeout' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
-            .on('broadcast', { event: 'chat_message' }, ({ payload }) => {
-                onEvent(payload as GameEvent);
-            })
+            .on('broadcast', { event: 'player_joined' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'player_left' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'hand_started' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'cards_dealt' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'player_action' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'phase_changed' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'hand_complete' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'player_timeout' }, ({ payload }) => forwardEvent(payload))
+            .on('broadcast', { event: 'chat_message' }, ({ payload }) => forwardEvent(payload))
             .subscribe((status) => {
-                console.log(`Channel ${channelName} status:`, status);
+                console.log(`[Socket] Channel ${channelName} status:`, status);
                 setIsConnected(status === 'SUBSCRIBED');
             });
 
@@ -81,8 +81,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         return () => {
             const ch = channelsRef.current.get(channelName);
             if (ch) {
+                console.log(`[Socket] Unsubscribing from ${channelName}`);
                 supabase.removeChannel(ch);
                 channelsRef.current.delete(channelName);
+                callbacksRef.current.delete(channelName);
             }
         };
     }, []);

@@ -122,6 +122,7 @@ Deno.serve(async (req: Request) => {
             players: playerList,
             phase,
             pot: activeHand?.pot || 0,
+            pots: activeHand?.pots || [],
             currentBet: activeHand?.current_bet || 0,
             communityCards: activeHand?.community_cards || [],
             dealerIndex: activeHand?.dealer_seat ?? -1,

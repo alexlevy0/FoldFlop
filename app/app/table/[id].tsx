@@ -57,7 +57,7 @@ export default function TableScreen() {
     // AI countdown and action history state
     const [aiCountdown, setAICountdown] = useState(0);
     const [aiPendingAction, setAIPendingAction] = useState<string>('');
-    const [actionHistory, setActionHistory] = useState<Array<{ player: string; action: string; amount?: number; timestamp: number }>>([]);
+    const [actionHistory, setActionHistory] = useState<Array<{ key?: string; player: string; action: string; amount?: number; timestamp: number }>>([]);
     const aiIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const lastTurnIdRef = useRef<string>('');
 
@@ -77,8 +77,8 @@ export default function TableScreen() {
 
     // AI Auto-Play - detect new turn and start countdown
     useEffect(() => {
-        // If it's not our turn or AI is disabled, clear everything
-        if (!isFullAuto || !isMyTurn || !isSeated) {
+        // If it's not our turn, AI is disabled, or already playing, clear everything
+        if (!isFullAuto || !isMyTurn || !isSeated || isAIPlaying) {
             if (aiIntervalRef.current) {
                 clearInterval(aiIntervalRef.current);
                 aiIntervalRef.current = null;
@@ -171,7 +171,7 @@ export default function TableScreen() {
                 aiIntervalRef.current = null;
             }
         };
-    }, [turnId, isFullAuto, isMyTurn, isSeated, currentBet, heroCurrentBet, heroPlayer?.stack, heroPlayer?.username, performAction, phase]);
+    }, [turnId, isFullAuto, isMyTurn, isSeated, isAIPlaying, currentBet, heroCurrentBet, heroPlayer?.stack, heroPlayer?.username, performAction, phase]);
 
     // Handle manual action (overrides AI)
     const handleAction = useCallback(async (action: string, amount?: number) => {
@@ -206,22 +206,26 @@ export default function TableScreen() {
     // Sync action history from Realtime (all players' actions)
     useEffect(() => {
         if (lastAction) {
-            // Add action from Realtime to history (sorted chronologically)
+            console.log('[ActionHistory] Received:', lastAction.playerName, lastAction.action, lastAction.phase, lastAction.timestamp);
+
+            // Build unique action key using server timestamp
+            const actionKey = `${lastAction.playerId}-${lastAction.action}-${lastAction.phase}-${lastAction.timestamp}`;
             const debugInfo = `[${lastAction.phase}|S${lastAction.seat}]`;
             const actionText = lastAction.amount > 0
                 ? `${lastAction.action} ${lastAction.amount} ${debugInfo}`
                 : `${lastAction.action} ${debugInfo}`;
 
             setActionHistory(prev => {
-                // Avoid duplicates by checking timestamp
-                const isDuplicate = prev.some(
-                    a => a.timestamp === lastAction.timestamp &&
-                        a.player === lastAction.playerName
-                );
-                if (isDuplicate) return prev;
+                // Avoid duplicates using unique action key
+                const isDuplicate = prev.some(a => a.key === actionKey);
+                if (isDuplicate) {
+                    console.log('[ActionHistory] Duplicate detected, skipping:', actionKey);
+                    return prev;
+                }
 
-                // Add and sort by timestamp (oldest first)
+                // Add entry with unique key and sort by timestamp (oldest first)
                 const newHistory = [...prev, {
+                    key: actionKey,
                     player: lastAction.playerName,
                     action: actionText,
                     timestamp: lastAction.timestamp,

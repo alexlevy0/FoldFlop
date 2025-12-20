@@ -2,7 +2,7 @@
  * Betting rules and validation
  */
 
-import { GameState, Player, ActionType, ValidActions } from './types';
+import { GameState, Player, ActionType, ValidActions } from './types.ts';
 
 /**
  * Get the valid actions for the current player

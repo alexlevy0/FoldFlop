@@ -188,29 +188,26 @@ export interface CheckUsernameResponse {
 // ============== TABLE STATE (Full) ==============
 
 export interface TableState {
-    table: {
-        id: string;
-        name: string;
-        smallBlind: number;
-        bigBlind: number;
-        maxPlayers: number;
-        minBuyIn: number;
-        maxBuyIn: number;
-        turnTimeoutMs: number;
+    id: string;
+    name: string;
+    blinds: {
+        sb: number;
+        bb: number;
     };
-    game: {
-        phase: 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
-        handNumber: number;
-        dealerIndex: number;
-        currentPlayerIndex: number;
-        currentBet: number;
-        pot: number;
-        communityCards: string[]; // e.g. ["Ah", "Kd", "Qc"]
-        turnStartedAt: number;
-        isHandComplete: boolean;
-    };
+    maxPlayers: number;
+    turnTimeout: number;
+    isPrivate: boolean;
+    phase: 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
+    pot: number;
+    pots: Array<{ amount: number; eligiblePlayerIds: string[] }>;
+    currentBet: number;
+    communityCards: string[];
+    dealerIndex: number;
+    currentPlayerIndex: number;
+    turnStartTime: number | null;
+    handNumber: number;
     players: TablePlayerState[];
-    myCards?: string[]; // Only for the requesting player
+    myCards?: string[];
 }
 
 export interface TablePlayerState {
