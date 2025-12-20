@@ -39,7 +39,13 @@ export function getValidActions(state: GameState): ValidActions {
     const maxRaiseTotal = player.stack + player.currentBet;
 
     // Can we raise? Need more chips than the min raise amount
-    const canRaise = player.stack > toCall && player.stack >= minRaiseAmount;
+    let canRaise = player.stack > toCall && player.stack >= minRaiseAmount;
+
+    // Under-raise rule: If the last raise was incomplete (less than minRaise)
+    // and this player was the last full aggressor, they cannot re-raise
+    if (canRaise && state.lastAggressorId === player.id && !state.lastRaiseWasComplete) {
+        canRaise = false;
+    }
 
     // If no one has bet yet, we can bet (first action or after checks)
     const noBetYet = state.currentBet === 0 || (state.phase === 'preflop' && state.currentBet === state.bigBlind);
@@ -166,8 +172,8 @@ export function isRoundComplete(state: GameState): boolean {
         const bbPlayer = state.players[state.bigBlindIndex];
         if (bbPlayer && !bbPlayer.isFolded && !bbPlayer.isAllIn) {
             // BB hasn't had option yet if current bet is just the big blind
-            // and no one has raised
-            if (state.currentBet === state.bigBlind && state.actions.length <= state.players.length) {
+            // and BB hasn't acted yet (using dedicated flag instead of actions.length)
+            if (state.currentBet === state.bigBlind && !state.bbHasActed) {
                 return false;
             }
         }

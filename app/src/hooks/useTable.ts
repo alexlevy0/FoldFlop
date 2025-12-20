@@ -10,12 +10,30 @@ import { useGame } from '../providers/GameProvider';
 import { useAuth } from '../providers/AuthProvider';
 import type { TableState, GameEvent } from '@foldflop/shared';
 
+interface WinnerInfo {
+    playerId: string;
+    playerName: string;
+    amount: number;
+}
+
+interface ActionInfo {
+    playerId: string;
+    playerName: string;
+    seat: number;
+    action: string;
+    amount: number;
+    phase: string;
+    timestamp: number;
+}
+
 interface UseTableReturn {
     tableState: TableState | null;
     isLoading: boolean;
     error: string | null;
     isMyTurn: boolean;
     myCards: string[];
+    lastWinner: WinnerInfo | null;
+    lastAction: ActionInfo | null;
     joinTable: (seatIndex: number, buyIn: number) => Promise<{ success: boolean; error?: string }>;
     leaveTable: () => Promise<{ success: boolean; error?: string }>;
     performAction: (action: string, amount?: number) => Promise<{ success: boolean; error?: string }>;
@@ -29,6 +47,8 @@ export function useTable(tableId: string): UseTableReturn {
 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [lastWinner, setLastWinner] = useState<WinnerInfo | null>(null);
+    const [lastAction, setLastAction] = useState<ActionInfo | null>(null);
 
     // Get table state from game context
     const tableState = gameState.tables.get(tableId) ?? null;
@@ -65,19 +85,65 @@ export function useTable(tableId: string): UseTableReturn {
         loadTable();
     }, [loadTable]);
 
-    // Subscribe to real-time events
+    // Subscribe to real-time events and auto-refresh
     useEffect(() => {
         const unsubscribe = subscribeToTable(tableId, (event: GameEvent) => {
+            console.log('Realtime event received:', event.type);
             handleEvent(tableId, event);
+
+            // Auto-refresh on important events
+            if (
+                event.type === 'player_joined' ||
+                event.type === 'player_left' ||
+                event.type === 'player_action' ||
+                event.type === 'hand_started' ||
+                event.type === 'phase_changed' ||
+                event.type === 'hand_complete'
+            ) {
+                // Debounce to avoid too many refreshes
+                setTimeout(() => {
+                    loadTable();
+                }, 100);
+            }
+
+            // Capture winner info from hand_complete event
+            if (event.type === 'hand_complete' && 'winners' in event) {
+                const eventAny = event as any;
+                if (eventAny.winners && eventAny.winners.length > 0) {
+                    const winnerData = eventAny.winners[0];
+                    setLastWinner({
+                        playerId: winnerData.playerId,
+                        playerName: winnerData.playerName || 'Player',
+                        amount: winnerData.amount ?? eventAny.pot ?? 0,
+                    });
+                    // Clear winner after 5 seconds
+                    setTimeout(() => setLastWinner(null), 5000);
+                }
+            }
+
+            // Capture player_action events from all players for synced history
+            if (event.type === 'player_action') {
+                const actionEvent = event as any;
+                setLastAction({
+                    playerId: actionEvent.playerId,
+                    playerName: actionEvent.playerName || 'Player',
+                    seat: actionEvent.seat ?? 0,
+                    action: actionEvent.action,
+                    amount: actionEvent.amount ?? 0,
+                    phase: actionEvent.phase || 'unknown',
+                    timestamp: actionEvent.timestamp || Date.now(),
+                });
+            }
 
             // Handle cards dealt specifically for this user
             if (event.type === 'cards_dealt' && 'playerId' in event && event.playerId === user?.id) {
                 // Update my cards through game context
+                loadTable();
             }
         });
 
         return unsubscribe;
-    }, [tableId, subscribeToTable, handleEvent, user?.id]);
+    }, [tableId, subscribeToTable, handleEvent, user?.id, loadTable]);
 
     const joinTable = useCallback(async (seatIndex: number, buyIn: number) => {
         try {
@@ -155,6 +221,8 @@ export function useTable(tableId: string): UseTableReturn {
         error,
         isMyTurn,
         myCards,
+        lastWinner,
+        lastAction,
         joinTable,
         leaveTable,
         performAction,

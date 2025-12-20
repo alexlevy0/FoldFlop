@@ -134,6 +134,10 @@ export interface GameState {
     lastRaiseAmount: number; // For calculating min raise
     minRaise: number;
 
+    // Under-raise rule tracking
+    lastAggressorId: string | null; // Player who made the last full raise
+    lastRaiseWasComplete: boolean; // True if last raise was >= minRaise
+
     // Pots
     pots: Pot[];
 
@@ -146,6 +150,7 @@ export interface GameState {
 
     // Flags
     isHandComplete: boolean;
+    bbHasActed: boolean; // For BB option tracking in preflop
     winners: HandWinner[] | null;
 }
 

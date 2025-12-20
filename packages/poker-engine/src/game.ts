@@ -69,11 +69,14 @@ export function createGameState(
         currentBet: 0,
         lastRaiseAmount: 0,
         minRaise: tableConfig.bigBlind,
+        lastAggressorId: null,
+        lastRaiseWasComplete: true,
         pots: [],
         actions: [],
         turnStartedAt: 0,
         turnTimeoutMs: tableConfig.turnTimeoutMs,
         isHandComplete: false,
+        bbHasActed: false,
         winners: null,
     };
 
