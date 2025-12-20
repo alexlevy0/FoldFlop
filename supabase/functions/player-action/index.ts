@@ -134,7 +134,7 @@ Deno.serve(async (req: Request) => {
             await Promise.all(stackUpdates);
 
             // 2. Update the hand in DB with final state (winners, etc.)
-            const { error: updateError } = await adminClient
+            const { data: updatedHandData, error: updateError } = await adminClient
                 .from('active_hands')
                 .update({
                     round: newGameState.phase,
@@ -151,11 +151,22 @@ Deno.serve(async (req: Request) => {
                     version: (activeHand.version || 1) + 1
                 })
                 .eq('id', activeHand.id)
-                .eq('version', activeHand.version || 1); // Optimistic lock
+                .eq('version', activeHand.version || 1) // Optimistic lock
+                .select();
 
             if (updateError) {
                 console.error('Failed to update completed hand:', updateError);
-                return errorResponse('Failed to update game state');
+                return errorResponse('Failed to update game state - DB error');
+            }
+
+            // Check for version conflict (optimistic lock failure)
+            if (!updatedHandData || updatedHandData.length === 0) {
+                console.warn('Optimistic lock failed for hand complete - another action may have completed first');
+                return jsonResponse({
+                    success: false,
+                    error: 'Conflict: Hand state changed. Please refresh.',
+                    code: 'CONFLICT'
+                }, 409);
             }
 
             // DB update succeeded - now broadcast
