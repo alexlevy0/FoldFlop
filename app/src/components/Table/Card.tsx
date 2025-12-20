@@ -51,6 +51,17 @@ const SIZES = {
 export function Card({ card, faceDown = false, size = 'md' }: CardProps) {
     const dimensions = SIZES[size];
 
+    // Handle 'back' card (loading state placeholder)
+    if (card === 'back') {
+        return (
+            <View style={[styles.card, styles.faceDown, { width: dimensions.width, height: dimensions.height }]}>
+                <View style={styles.cardBack}>
+                    <Text style={styles.cardBackText}>🃏</Text>
+                </View>
+            </View>
+        );
+    }
+
     // Handle undefined or invalid card
     // Safely check for length if string, or properties if object
     const isValid = typeof card === 'string' ? card.length >= 2 : (card && 'rank' in card && 'suit' in card);

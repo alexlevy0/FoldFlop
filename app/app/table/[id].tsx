@@ -109,6 +109,7 @@ export default function TableScreen() {
     // AI countdown and action history state
     const [aiCountdown, setAICountdown] = useState(0);
     const [aiPendingAction, setAIPendingAction] = useState<string>('');
+    const [currentSuggestion, setCurrentSuggestion] = useState<any>(null);
     const [actionHistory, setActionHistory] = useState<Array<{ key?: string; player: string; action: string; amount?: number; timestamp: number }>>([]);
     const aiIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const lastTurnIdRef = useRef<string>('');
@@ -433,7 +434,10 @@ export default function TableScreen() {
             isBigBlind: player.isBigBlind ?? false,
             isCurrentPlayer: player.isCurrentPlayer ?? false,
             hasCards: player.hasCards ?? false,
-            cards: player.id === user?.id ? myCards : undefined,
+            // Show actual cards if available, card backs if cards are loading
+            cards: player.id === user?.id
+                ? (myCards && myCards.length > 0 ? myCards : (player.hasCards ? ['back', 'back'] : undefined))
+                : undefined,
             seatIndex: player.seatIndex,
         };
     }) ?? [];
@@ -637,7 +641,7 @@ export default function TableScreen() {
                             gameStateForAI={gameStateForAI}
                             turnId={turnId}
                             heroSeatIndex={heroSeatIndex}
-                            setAIPendingAction={setAIPendingAction}
+                            onSuggestion={setCurrentSuggestion}
                         />
                         {isAIPlaying && (
                             <Text style={styles.aiPlayingText}>🤖 AI is playing...</Text>
