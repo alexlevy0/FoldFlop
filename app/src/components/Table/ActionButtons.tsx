@@ -43,8 +43,13 @@ export function ActionButtons({
     onAction,
     disabled = false,
 }: ActionButtonsProps) {
-    const [raiseAmount, setRaiseAmount] = useState(minRaise);
-    const [showSlider, setShowSlider] = useState(false);
+    const [raiseAmount, setRaiseAmount] = React.useState(minRaise);
+    const [showSlider, setShowSlider] = React.useState(false);
+
+    // Sync raiseAmount when minRaise changes (e.g., after opponent raises)
+    React.useEffect(() => {
+        setRaiseAmount(minRaise);
+    }, [minRaise]);
 
     const handleFold = () => onAction('fold');
     const handleCheck = () => onAction('check');

@@ -111,8 +111,7 @@ Deno.serve(async (req: Request) => {
         // Update DB with new state (Calculate payload for broadcast and persistence)
         const updatePayload = mapEngineToDb(newGameState, activeHand);
 
-        // Broadcast the action
-        // Get player name for broadcast
+        // Get player name for broadcast (do this early, before DB update)
         const { data: profileData } = await adminClient
             .from('profiles')
             .select('username')
@@ -120,41 +119,8 @@ Deno.serve(async (req: Request) => {
             .single();
 
         const channel = adminClient.channel(`table:${tableId}`);
-        await channel.send({
-            type: 'broadcast',
-            event: 'player_action',
-            payload: {
-                type: 'player_action',
-                tableId,
-                timestamp: Date.now(),
-                handNumber: activeHand.hand_number,
-                playerId: user.id,
-                playerName: profileData?.username || 'Player',
-                seat: player.seat,
-                action: action.type,
-                amount: action.amount ?? 0,
-                // Broadcast new state summaries
-                pot: updatePayload.pot,
-                currentSeat: updatePayload.current_seat,
-                phase: updatePayload.phase,
-            },
-        });
 
         if (newGameState.isHandComplete) {
-            // Broadcast hand results (winners)
-            await channel.send({
-                type: 'broadcast',
-                event: 'hand_complete',
-                payload: {
-                    type: 'hand_complete',
-                    tableId,
-                    timestamp: Date.now(),
-                    handNumber: activeHand.hand_number,
-                    winners: newGameState.winners,
-                    pots: newGameState.pots
-                },
-            });
-
             // Hand is over!
             // 1. Update persistent stacks in table_players
             const stackUpdates = newGameState.players.map(p =>
@@ -167,11 +133,7 @@ Deno.serve(async (req: Request) => {
 
             await Promise.all(stackUpdates);
 
-            // 2. DO NOT delete the active hand yet.
-            // Leave it in the DB so clients can fetch the result (Showdown) via REST
-            // The next 'deal-hand' call will clean up this old hand.
-
-            // Update the hand in DB with final state (winners, etc.)
+            // 2. Update the hand in DB with final state (winners, etc.)
             const { error: updateError } = await adminClient
                 .from('active_hands')
                 .update({
@@ -186,15 +148,52 @@ Deno.serve(async (req: Request) => {
                     winners: newGameState.winners, // Store winners!
                     is_hand_complete: true,
                     updated_at: new Date().toISOString(),
+                    version: (activeHand.version || 1) + 1
                 })
-                .eq('id', activeHand.id);
+                .eq('id', activeHand.id)
+                .eq('version', activeHand.version || 1); // Optimistic lock
 
             if (updateError) {
                 console.error('Failed to update completed hand:', updateError);
+                return errorResponse('Failed to update game state');
             }
 
+            // DB update succeeded - now broadcast
+            await channel.send({
+                type: 'broadcast',
+                event: 'player_action',
+                payload: {
+                    type: 'player_action',
+                    tableId,
+                    timestamp: Date.now(),
+                    handNumber: activeHand.hand_number,
+                    playerId: user.id,
+                    playerName: profileData?.username || 'Player',
+                    seat: player.seat,
+                    action: action.type,
+                    amount: action.amount ?? 0,
+                    pot: updatePayload.pot,
+                    currentSeat: updatePayload.current_seat,
+                    phase: updatePayload.phase,
+                },
+            });
+
+            // Broadcast hand results (winners)
+            await channel.send({
+                type: 'broadcast',
+                event: 'hand_complete',
+                payload: {
+                    type: 'hand_complete',
+                    tableId,
+                    timestamp: Date.now(),
+                    handNumber: activeHand.hand_number,
+                    winners: newGameState.winners,
+                    pots: newGameState.pots
+                },
+            });
+
         } else {
-            // Game continues - Update DB with new state
+            // Game continues - Update DB with new state FIRST
             const { data: updatedData, error: updateError } = await adminClient
                 .from('active_hands')
                 .update({
@@ -211,12 +210,34 @@ Deno.serve(async (req: Request) => {
             }
 
             if (!updatedData || updatedData.length === 0) {
+                // Race condition detected - another action got there first
+                // Do NOT broadcast - just return conflict
                 return jsonResponse({
                     success: false,
                     error: 'Conflict: Game state changed by another action. Please retry.',
                     code: 'CONFLICT'
                 }, 409);
             }
+
+            // DB update succeeded - now broadcast
+            await channel.send({
+                type: 'broadcast',
+                event: 'player_action',
+                payload: {
+                    type: 'player_action',
+                    tableId,
+                    timestamp: Date.now(),
+                    handNumber: activeHand.hand_number,
+                    playerId: user.id,
+                    playerName: profileData?.username || 'Player',
+                    seat: player.seat,
+                    action: action.type,
+                    amount: action.amount ?? 0,
+                    pot: updatePayload.pot,
+                    currentSeat: updatePayload.current_seat,
+                    phase: updatePayload.phase,
+                },
+            });
         }
 
         return jsonResponse({
