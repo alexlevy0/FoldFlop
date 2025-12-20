@@ -19,6 +19,7 @@ const SocketContext = createContext<SocketContextValue | null>(null);
 export function SocketProvider({ children }: { children: React.ReactNode }) {
     const channelsRef = useRef<Map<string, RealtimeChannel>>(new Map());
     const callbacksRef = useRef<Map<string, (event: GameEvent) => void>>(new Map());
+    const subscriptionsRef = useRef<Map<string, number>>(new Map());
     const [isConnected, setIsConnected] = React.useState(true);
 
     // Cleanup on unmount
@@ -29,6 +30,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
             });
             channelsRef.current.clear();
             callbacksRef.current.clear();
+            subscriptionsRef.current.clear();
         };
     }, []);
 
@@ -41,19 +43,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         // Always update callback to latest
         callbacksRef.current.set(channelName, onEvent);
 
-        // If already subscribed, don't create new channel
+        // Increment subscription count
+        const currentCount = subscriptionsRef.current.get(channelName) || 0;
+        subscriptionsRef.current.set(channelName, currentCount + 1);
+        console.log(`[Socket] Subscribing to ${channelName}. Count: ${currentCount + 1}`);
+
+        // If already subscribed, return cleanup function
         if (channelsRef.current.has(channelName)) {
-            // console.log(`[Socket] Already subscribed to ${channelName}, callback updated`);
             return () => {
-                // When a component unmounts, we don't necessarily want to kill the channel 
-                // if other components use it. For now, we'll just remove the callback reference 
-                // but keep the channel alive to prevent thrashing.
-                // ideally we'd use ref counting.
-                // callbacksRef.current.delete(channelName);
+                const count = subscriptionsRef.current.get(channelName) || 0;
+                if (count > 0) {
+                    subscriptionsRef.current.set(channelName, count - 1);
+                    console.log(`[Socket] Unsubscribing from ${channelName} (decrement). New count: ${count - 1}`);
+                }
+
+                if (count - 1 <= 0) {
+                    cleanupChannel(channelName);
+                }
             };
         }
 
-        console.log(`[Socket] Creating new subscription to ${channelName}`);
+        console.log(`[Socket] Creating NEW subscription to ${channelName}`);
 
         // Wrapper that always uses latest callback
         const forwardEvent = (payload: any) => {
@@ -82,19 +92,28 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
         // Return unsubscribe function
         return () => {
-            // Implementation of Ref Counting or lazy disconnect would be better here.
-            // For now, let's keep it simple: if this unmounts, we disconnect.
-            // BUT, useTable unmounting causes this. 
-            // The issue is likely useTable re-running the effect.
-            const ch = channelsRef.current.get(channelName);
-            if (ch) {
-                console.log(`[Socket] Unsubscribing from ${channelName}`);
-                supabase.removeChannel(ch);
-                channelsRef.current.delete(channelName);
-                callbacksRef.current.delete(channelName);
+            const count = subscriptionsRef.current.get(channelName) || 0;
+            if (count > 0) {
+                subscriptionsRef.current.set(channelName, count - 1);
+                console.log(`[Socket] Unsubscribing from ${channelName} (decrement). New count: ${count - 1}`);
+            }
+
+            if (count - 1 <= 0) {
+                cleanupChannel(channelName);
             }
         };
     }, []);
+
+    const cleanupChannel = (channelName: string) => {
+        const channel = channelsRef.current.get(channelName);
+        if (channel) {
+            console.log(`[Socket] removing actual channel ${channelName}`);
+            supabase.removeChannel(channel);
+            channelsRef.current.delete(channelName);
+            callbacksRef.current.delete(channelName);
+            subscriptionsRef.current.delete(channelName);
+        }
+    };
 
     const sendChatMessage = useCallback(async (tableId: string, message: string) => {
         const channelName = `table:${tableId}`;
