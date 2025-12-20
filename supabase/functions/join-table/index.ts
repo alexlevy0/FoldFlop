@@ -188,6 +188,7 @@ Deno.serve(async (req: Request) => {
             type: 'broadcast',
             event: 'player_joined',
             payload: {
+                type: 'player_joined',
                 tableId,
                 timestamp: Date.now(),
                 player: {
