@@ -73,6 +73,7 @@ export interface Player {
     isAllIn: boolean;
     isSittingOut: boolean;
     isDisconnected: boolean;
+    hasActed: boolean; // Computed flag to track if player has acted in current round
 }
 
 // Game phases

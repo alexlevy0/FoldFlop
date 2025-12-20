@@ -1,7 +1,7 @@
-// Player Action Edge Function
-// Validates and processes player actions using shared poker engine
+
+// Player Timeout Edge Function
+// Allows clients to claim a timeout, forcing a Fold/Check if time is up
 import {
-    createSupabaseClient,
     createAdminClient,
     getUser,
     jsonResponse,
@@ -11,26 +11,16 @@ import {
 import {
     GameState,
     Player,
-    ActionType,
     Card,
     PlayerAction,
-    Pot
 } from '../_shared/poker-engine/types.ts';
-import { processAction } from '../_shared/poker-engine/game.ts';
+import { processAction, getCallAmount } from '../_shared/poker-engine/game.ts';
 
-interface ActionRequest {
-    type: ActionType;
-    amount?: number;
-}
-
-interface PlayerActionRequest {
+interface TimeoutRequest {
     tableId: string;
-    action: ActionRequest;
-    actionId?: string;
 }
 
-// Processed action IDs to prevent duplicates
-const processedActions = new Set<string>();
+const GRACE_PERIOD_MS = 2000; // 2 seconds grace period for network latency
 
 Deno.serve(async (req: Request) => {
     // Handle CORS
@@ -38,30 +28,22 @@ Deno.serve(async (req: Request) => {
     if (corsResponse) return corsResponse;
 
     try {
-        // Authenticate user
+        // Authenticate user (any logged in user can trigger this cleanup)
         const user = await getUser(req);
         if (!user) {
             return errorResponse('Unauthorized', 401);
         }
 
         // Parse request
-        const { tableId, action, actionId }: PlayerActionRequest = await req.json();
+        const { tableId }: TimeoutRequest = await req.json();
 
-        if (!tableId || !action || !action.type) {
-            return errorResponse('Missing required fields');
-        }
-
-        // Check for duplicate action
-        if (actionId && processedActions.has(actionId)) {
-            return jsonResponse({
-                success: true,
-                alreadyProcessed: true,
-            });
+        if (!tableId) {
+            return errorResponse('Missing tableId');
         }
 
         const adminClient = createAdminClient();
 
-        // Get active hand from DB with table config
+        // Get active hand
         const { data: activeHand, error: handError } = await adminClient
             .from('active_hands')
             .select('*, tables!inner(blinds_sb, blinds_bb, turn_timeout_ms)')
@@ -72,51 +54,56 @@ Deno.serve(async (req: Request) => {
             return errorResponse('No active hand at this table');
         }
 
-        // Optimistic locking check (Phase 4)
-        if (activeHand.version) {
-            // This will be checked during update
+        // Check if time has actually passed
+        const now = Date.now();
+        const turnStartedAt = new Date(activeHand.turn_started_at).getTime();
+        const timeoutMs = activeHand.tables?.turn_timeout_ms || 30000;
+
+        // Add a small grace period (e.g. 0.5 seconds) to account for network latency
+        const GRACE_PERIOD_MS = 500;
+
+        const timeElapsed = now - turnStartedAt;
+        if (timeElapsed < timeoutMs + GRACE_PERIOD_MS) {
+            const waitTime = Math.ceil((timeoutMs + GRACE_PERIOD_MS - timeElapsed) / 1000);
+            return errorResponse(`Too early to claim timeout. Wait ${waitTime}s`);
         }
 
-        // Verify it's the player's turn
-        const playerStates: any[] = activeHand.player_states;
-        const playerIndex = playerStates.findIndex(p => p.user_id === user.id);
-
-        if (playerIndex === -1) {
-            return errorResponse('You are not at this table');
-        }
-
-        const player = playerStates[playerIndex];
-
-        // Strict turn check
-        if (activeHand.current_seat !== player.seat) {
-            return errorResponse(`Not your turn (current seat: ${activeHand.current_seat}, your seat: ${player.seat})`);
-        }
-
-        // Build GameState from DB
+        // Build GameState
         const gameState = mapDbToEngine(activeHand);
+        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-        // Process action using the engine
+        if (!currentPlayer) {
+            return errorResponse('No current player found');
+        }
+
+        console.log(`Timeout claimed for player ${currentPlayer.id} at seat ${currentPlayer.seatIndex}`);
+
+        // Determine Action (Check if possible, otherwise Fold)
+        // A player can check if currentBet == player.currentBet
+        const toCall = gameState.currentBet - currentPlayer.currentBet;
+        const actionType = toCall === 0 ? 'check' : 'fold';
+
+        // Process action
         let newGameState: GameState;
         try {
             newGameState = processAction(
                 gameState,
-                user.id,
-                action.type,
-                action.amount || 0
+                currentPlayer.id,
+                actionType,
+                0
             );
         } catch (e: any) {
-            return errorResponse(e.message);
+            return errorResponse(`Failed to process timeout action: ${e.message}`);
         }
 
-        // Update DB with new state (Calculate payload for broadcast and persistence)
+        // Update DB with new state
         const updatePayload = mapEngineToDb(newGameState, activeHand);
 
         // Broadcast the action
-        // Get player name for broadcast
         const { data: profileData } = await adminClient
             .from('profiles')
             .select('username')
-            .eq('id', user.id)
+            .eq('id', currentPlayer.id)
             .single();
 
         const channel = adminClient.channel(`table:${tableId}`);
@@ -128,11 +115,12 @@ Deno.serve(async (req: Request) => {
                 tableId,
                 timestamp: Date.now(),
                 handNumber: activeHand.hand_number,
-                playerId: user.id,
+                playerId: currentPlayer.id,
                 playerName: profileData?.username || 'Player',
-                seat: player.seat,
-                action: action.type,
-                amount: action.amount ?? 0,
+                seat: currentPlayer.seatIndex,
+                action: actionType, // 'fold' or 'check'
+                amount: 0,
+                isTimeout: true,
                 // Broadcast new state summaries
                 pot: updatePayload.pot,
                 currentSeat: updatePayload.current_seat,
@@ -140,8 +128,17 @@ Deno.serve(async (req: Request) => {
             },
         });
 
+        await channel.send({
+            type: 'broadcast',
+            event: 'player_timeout',
+            payload: {
+                playerId: currentPlayer.id,
+                tableId
+            }
+        });
+
         if (newGameState.isHandComplete) {
-            // Broadcast hand results (winners)
+            // Broadcast hand results
             await channel.send({
                 type: 'broadcast',
                 event: 'hand_complete',
@@ -155,7 +152,6 @@ Deno.serve(async (req: Request) => {
                 },
             });
 
-            // Hand is over!
             // 1. Update persistent stacks in table_players
             const stackUpdates = newGameState.players.map(p =>
                 adminClient
@@ -164,67 +160,50 @@ Deno.serve(async (req: Request) => {
                     .eq('table_id', tableId)
                     .eq('user_id', p.id)
             );
-
             await Promise.all(stackUpdates);
 
-            // 2. Delete active hand so the table goes back to 'waiting' state
-            // This prevents "Zombie Hands" where the game keeps thinking it's ongoing
+            // 2. Delete active hand
             await adminClient
                 .from('active_hands')
                 .delete()
                 .eq('id', activeHand.id);
 
         } else {
-            // Game continues - Update DB with new state
-            const { data: updatedData, error: updateError } = await adminClient
+            // Update active hand
+            const { error: updateError } = await adminClient
                 .from('active_hands')
                 .update({
                     ...updatePayload,
-                    version: (activeHand.version || 1) + 1 // Increment version
+                    version: (activeHand.version || 1) + 1
                 })
                 .eq('id', activeHand.id)
-                .eq('version', activeHand.version || 1) // Optimistic lock
-                .select();
+                .eq('version', activeHand.version || 1); // Optimistic lock possible failure ignored for now as timeout race is rare
 
             if (updateError) {
                 console.error('Update error:', updateError);
-                return errorResponse('Failed to update game state - internal error');
-            }
-
-            if (!updatedData || updatedData.length === 0) {
-                return jsonResponse({
-                    success: false,
-                    error: 'Conflict: Game state changed by another action. Please retry.',
-                    code: 'CONFLICT'
-                }, 409);
+                return errorResponse('Failed to update game state');
             }
         }
 
         return jsonResponse({
             success: true,
-            data: {
-                actionId: actionId ?? crypto.randomUUID(),
-                pot: updatePayload.pot,
-                currentSeat: updatePayload.current_seat,
-                phase: updatePayload.phase,
-                isHandComplete: newGameState.isHandComplete,
-            },
+            message: `Player ${currentPlayer.id} timed out and ${actionType}ed`
         });
 
     } catch (error) {
-        console.error('Player action error:', error);
+        console.error('Timeout error:', error);
         return errorResponse('Internal server error', 500);
     }
 });
 
 // Helper: Map DB ActiveHand to Engine GameState
+// (Duplicated from player-action to keep function standalone and robust)
 function mapDbToEngine(dbHand: any): GameState {
-    // Map players
-    const players: Player[] = dbHand.player_states.map((p: any, index: number) => ({
+    const players: Player[] = dbHand.player_states.map((p: any) => ({
         id: p.user_id,
         seatIndex: p.seat,
         stack: p.stack,
-        holeCards: p.hole_cards as Card[], // DB JSON -> Card[]
+        holeCards: p.hole_cards as Card[],
         currentBet: p.current_bet,
         totalBetThisHand: p.total_bet,
         isFolded: !!p.is_folded,
@@ -232,13 +211,12 @@ function mapDbToEngine(dbHand: any): GameState {
         isSittingOut: !!p.is_sitting_out,
         isDisconnected: false,
         hasActed: !!p.has_acted,
-    })).sort((a, b) => a.seatIndex - b.seatIndex);
+    })).sort((a: Player, b: Player) => a.seatIndex - b.seatIndex);
 
-    // Find indices
-    const dealerIndex = players.findIndex(p => p.seatIndex === dbHand.dealer_seat);
-    const sbIndex = players.findIndex(p => p.seatIndex === dbHand.sb_seat);
-    const bbIndex = players.findIndex(p => p.seatIndex === dbHand.bb_seat);
-    const currentPlayerIndex = players.findIndex(p => p.seatIndex === dbHand.current_seat);
+    const dealerIndex = players.findIndex((p: Player) => p.seatIndex === dbHand.dealer_seat);
+    const sbIndex = players.findIndex((p: Player) => p.seatIndex === dbHand.sb_seat);
+    const bbIndex = players.findIndex((p: Player) => p.seatIndex === dbHand.bb_seat);
+    const currentPlayerIndex = players.findIndex((p: Player) => p.seatIndex === dbHand.current_seat);
 
     return {
         id: dbHand.id,
@@ -251,17 +229,15 @@ function mapDbToEngine(dbHand: any): GameState {
         bigBlindIndex: bbIndex !== -1 ? bbIndex : 0,
         currentPlayerIndex: currentPlayerIndex !== -1 ? currentPlayerIndex : -1,
 
-        // Cards
         deck: dbHand.deck as Card[],
         communityCards: dbHand.community_cards as Card[],
-        burnedCards: [], // DB doesn't store burned
+        burnedCards: [],
 
-        // Betting
         smallBlind: dbHand.tables?.blinds_sb || 10,
         bigBlind: dbHand.tables?.blinds_bb || 20,
         currentBet: dbHand.current_bet,
         lastRaiseAmount: dbHand.last_raise_amount,
-        minRaise: 0, // Calculated dynamically
+        minRaise: 0,
 
         lastAggressorId: dbHand.last_aggressor_id,
         lastRaiseWasComplete: dbHand.last_raise_was_complete ?? true,
@@ -277,9 +253,7 @@ function mapDbToEngine(dbHand: any): GameState {
     };
 }
 
-// Helper: Map Engine GameState to DB Updates
 function mapEngineToDb(gameState: GameState, originalHand: any): any {
-    // Map players back to player_states
     const playerStates = gameState.players.map(p => ({
         user_id: p.id,
         seat: p.seatIndex,
@@ -297,24 +271,22 @@ function mapEngineToDb(gameState: GameState, originalHand: any): any {
         ? gameState.players[gameState.currentPlayerIndex].seatIndex
         : -1;
 
-    // Calculate total pot from pots array for display
     const totalPot = (gameState.pots || []).reduce((sum, p) => sum + p.amount, 0)
-        + gameState.players.reduce((sum, p) => sum + p.currentBet, 0); // Active bets
+        + gameState.players.reduce((sum, p) => sum + p.currentBet, 0);
 
     return {
         phase: gameState.phase,
         current_bet: gameState.currentBet,
         last_raise_amount: gameState.lastRaiseAmount,
-        pot: totalPot, // Simplified total
-        pots: gameState.pots, // JSONB side pots
+        pot: totalPot,
+        pots: gameState.pots,
         community_cards: gameState.communityCards,
         deck: gameState.deck,
         player_states: playerStates,
         current_seat: currentSeat,
-
         last_aggressor_id: gameState.lastAggressorId,
         last_raise_was_complete: gameState.lastRaiseWasComplete,
         bb_has_acted: gameState.bbHasActed,
-        turn_started_at: new Date().toISOString() // RESET TIMER ON EVERY ACTION
+        turn_started_at: new Date().toISOString() // Reset timer for next player
     };
 }

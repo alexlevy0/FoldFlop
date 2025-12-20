@@ -55,7 +55,9 @@ export function createGameState(
             currentBet: 0,
             totalBetThisHand: 0,
             isFolded: false,
+            isFolded: false,
             isAllIn: false,
+            hasActed: false,
         })),
         dealerIndex,
         smallBlindIndex: sbIndex,
@@ -224,6 +226,9 @@ export function processAction(
             playerAction.amount = amount;
             newState.lastRaiseAmount = raiseAmount;
             newState.currentBet = amount;
+            // Since this is a raise, other players' hasActed status is now insufficient (they must call),
+            // but we don't reset their hasActed flag. Instead, isRoundComplete checks (hasActed && betsMatch).
+            // When they call, set hasActed=true.
             if (player.stack === 0) player.isAllIn = true;
             break;
         }
@@ -262,6 +267,9 @@ export function processAction(
         newState.bbHasActed = true;
     }
 
+    // Mark player as having acted
+    player.hasActed = true;
+
     players[playerIndex] = player;
     newState.players = players;
     newState.actions = [...state.actions, playerAction];
@@ -291,8 +299,8 @@ export function processAction(
 function advancePhase(state: GameState): GameState {
     let newState = { ...state };
 
-    // Reset current bets for all players
-    const players = newState.players.map(p => ({ ...p, currentBet: 0 }));
+    // Reset current bets and acted status for all players
+    const players = newState.players.map(p => ({ ...p, currentBet: 0, hasActed: false }));
     newState.players = players;
     newState.currentBet = 0;
     newState.lastRaiseAmount = 0;

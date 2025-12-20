@@ -8,7 +8,7 @@ import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import { PlayerSeat } from './PlayerSeat';
 import { PotDisplay } from './PotDisplay';
 import { CommunityCards } from './CommunityCards';
-import { TurnTimer } from './TurnTimer';
+
 import { colors, spacing, borderRadius, shadows, fontSize } from '../../styles/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -114,15 +114,7 @@ export function PokerTable({
                             <CommunityCards cards={communityCards} phase={gamePhase} />
                         )}
 
-                        {/* Timer for current player */}
-                        {turnStartTime && currentPlayerIndex >= 0 && (
-                            <TurnTimer
-                                totalTime={turnTimeout}
-                                startTime={turnStartTime}
-                                isActive={isGameActive}
-                                onTimeout={onTimeout}
-                            />
-                        )}
+
                     </View>
                 </View>
 

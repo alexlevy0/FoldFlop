@@ -37,6 +37,7 @@ interface UseTableReturn {
     joinTable: (seatIndex: number, buyIn: number) => Promise<{ success: boolean; error?: string }>;
     leaveTable: () => Promise<{ success: boolean; error?: string }>;
     performAction: (action: string, amount?: number) => Promise<{ success: boolean; error?: string }>;
+    claimTimeout: () => Promise<{ success: boolean; error?: any }>;
     refetch: () => Promise<void>;
 }
 
@@ -217,6 +218,24 @@ export function useTable(tableId: string): UseTableReturn {
         }
     }, [tableId]);
 
+    const claimTimeout = useCallback(async () => {
+        try {
+            const { data, error: invokeError } = await supabase.functions.invoke('player-timeout', {
+                body: { tableId },
+            });
+
+            if (invokeError) throw invokeError;
+            if (!data.success) {
+                console.warn('Claim timeout failed:', data.error);
+                return { success: false, error: data.error };
+            }
+            return { success: true };
+        } catch (err) {
+            console.error('Claim timeout error:', err);
+            return { success: false, error: 'Failed' };
+        }
+    }, [tableId]);
+
     return {
         tableState,
         isLoading,
@@ -228,6 +247,7 @@ export function useTable(tableId: string): UseTableReturn {
         joinTable,
         leaveTable,
         performAction,
+        claimTimeout,
         refetch: loadTable,
     };
 }

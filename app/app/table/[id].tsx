@@ -6,6 +6,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { PokerTable, ActionButtons, AICopilotToggle } from '../../src/components/Table';
+import { TurnTimer } from '../../src/components/Table/TurnTimer';
 import { useTable } from '../../src/hooks/useTable';
 import { useAuth } from '../../src/providers/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
@@ -56,6 +57,7 @@ export default function TableScreen() {
         joinTable,
         leaveTable,
         performAction,
+        claimTimeout,
         refetch,
     } = useTable(id);
 
@@ -458,6 +460,7 @@ export default function TableScreen() {
                     heroSeatIndex={heroSeatIndex}
                     onSeatClick={handleSeatClick}
                     maxPlayers={tableState?.maxPlayers ?? 6}
+                    onTimeout={claimTimeout}
                 />
 
                 {/* Game Controls */}
@@ -561,8 +564,35 @@ export default function TableScreen() {
                 )}
             </ScrollView>
 
-            {/* Action History Box - Bottom Left */}
-            <View style={styles.actionHistoryBox}>
+            {/* Turn Timer - Visible to everyone when a turn is active */}
+            {(() => {
+                const ts = tableState as any;
+
+                return ts?.turnStartTime && ts?.currentPlayerIndex !== -1 && (
+                    <View style={{
+                        position: 'absolute',
+                        // If my turn, dock it slightly above the actions container (which is roughly 180px-200px high with slider)
+                        // If not, dock at bottom
+                        bottom: isMyTurn ? 180 : 0,
+                        left: 0,
+                        right: 0,
+                        zIndex: 90, // Lower than actions
+                        paddingHorizontal: 20,
+                        paddingBottom: isMyTurn ? 10 : 30,
+                    }}>
+                        <TurnTimer
+                            key={ts.turnStartTime} // Force re-mount on turn change to reset animation
+                            totalTime={ts?.turnTimeout ?? 30000}
+                            startTime={new Date(ts.turnStartTime).getTime()}
+                            isActive={true}
+                            onTimeout={claimTimeout}
+                        />
+                    </View>
+                );
+            })()}
+
+            {/* Action History Box - Bottom Left (adjusted margin if timer is present) */}
+            <View style={[styles.actionHistoryBox, { bottom: isMyTurn ? 220 : 80 }]}>
                 <Text style={styles.actionHistoryTitle}>📜 Action History</Text>
                 <ScrollView style={styles.actionHistoryScroll} showsVerticalScrollIndicator={false}>
                     {actionHistory.length === 0 ? (
@@ -584,7 +614,7 @@ export default function TableScreen() {
 
             {/* Action Buttons - Fixed at bottom (always show when it's player's turn) */}
             {isMyTurn && isSeated && !isAIPlaying && (
-                <View style={styles.actionsContainer}>
+                <View style={[styles.actionsContainer, { zIndex: 200 }]}>
                     <ActionButtons
                         canFold={canFold}
                         canCheck={canCheck}

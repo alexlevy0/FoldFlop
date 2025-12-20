@@ -169,7 +169,7 @@ export function isRoundComplete(state: GameState): boolean {
 
     // Check if all non-all-in players have matched the current bet
     // and everyone has had a chance to act
-    const allMatched = playersWhoCanAct.every(p => p.currentBet === state.currentBet);
+    const allMatched = playersWhoCanAct.every(p => p.hasActed && p.currentBet === state.currentBet);
 
     // For preflop, big blind gets option to raise
     if (state.phase === 'preflop' && allMatched) {
