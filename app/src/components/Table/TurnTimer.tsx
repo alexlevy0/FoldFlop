@@ -14,12 +14,14 @@ interface TurnTimerProps {
     onTimeout?: () => void;
     isActive: boolean;
     style?: ViewStyle;
+    gracePeriod?: number; // Extra time to wait before triggering onTimeout (handles clock drift)
 }
 
-export function TurnTimer({ totalTime, startTime, onTimeout, isActive, style }: TurnTimerProps) {
+export function TurnTimer({ totalTime, startTime, onTimeout, isActive, style, gracePeriod }: TurnTimerProps) {
     // Safety check for invalid inputs to prevent NaNs
     const safeTotalTime = Math.max(1000, totalTime || 30000);
     const safeStartTime = startTime || Date.now();
+    const safeGracePeriod = gracePeriod ?? 0;
 
     const [remaining, setRemaining] = useState(safeTotalTime);
     const progressAnim = useRef(new Animated.Value(1)).current;
@@ -35,17 +37,18 @@ export function TurnTimer({ totalTime, startTime, onTimeout, isActive, style }: 
 
         const updateTimer = () => {
             const now = Date.now();
-            const timeLeft = Math.max(0, endTime - now);
-            setRemaining(timeLeft);
-            return timeLeft;
+            const rawTimeLeft = endTime - now;
+            setRemaining(Math.max(0, rawTimeLeft));
+            return rawTimeLeft;
         };
 
         // Initial update
         updateTimer();
 
         const interval = setInterval(() => {
-            const timeLeft = updateTimer();
-            if (timeLeft <= 0) {
+            const rawTimeLeft = updateTimer();
+            // Wait for grace period before triggering timeout
+            if (rawTimeLeft <= -safeGracePeriod) {
                 clearInterval(interval);
                 onTimeout?.();
             }

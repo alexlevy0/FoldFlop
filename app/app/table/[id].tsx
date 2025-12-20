@@ -22,7 +22,7 @@ function WaitAIHook({
     gameStateForAI,
     turnId,
     heroSeatIndex,
-    setAIPendingAction
+    onSuggestion
 }: any) {
     const { useAI } = require('../../src/hooks/useAI');
     const { suggestion } = useAI(
@@ -36,10 +36,10 @@ function WaitAIHook({
     );
 
     useEffect(() => {
-        if (suggestion && isMyTurn) {
-            setAIPendingAction(`${suggestion.action} (${suggestion.confidence.toFixed(0)}%)`);
+        if (suggestion && isMyTurn && typeof onSuggestion === 'function') {
+            onSuggestion(suggestion);
         }
-    }, [suggestion, isMyTurn, setAIPendingAction]);
+    }, [suggestion, isMyTurn, onSuggestion]);
 
     return null;
 }
@@ -155,11 +155,25 @@ export default function TableScreen() {
         console.log('[AI] New turn detected:', turnId, '- Will:', pendingAction);
 
         // Start countdown
-        let count = 1; // Faster AI
+        // Adaptive Strategy: Use 20s normally, but shorten if turn timer is running out.
+        // This ensures the AI sends the action before the server timeout (30s) kills the hand.
+        const ts = tableState as any;
+        const startTime = ts?.turnStartTime ? new Date(ts.turnStartTime).getTime() : Date.now();
+        const timeout = ts?.turnTimeout ?? 30000;
+        const now = Date.now();
+        const remainingSec = Math.floor((timeout - (now - startTime)) / 1000);
+
+        // Aim for 20s, but ensure we have at least 3s buffer before server timeout
+        let count = Math.min(20, Math.max(1, remainingSec - 3));
+
+        console.log(`[AI] Turn Time Check: Remaining=${remainingSec}s, AI_Countdown=${count}s`);
+
         setAICountdown(count);
 
         aiIntervalRef.current = setInterval(() => {
             count--;
+            // Console warning if time is running out (user request)
+            if (count === 5) console.warn('[AI] ⚠️ Only 5 seconds left for manual override!');
             console.log('[AI] Countdown:', count);
             setAICountdown(count);
 
@@ -611,6 +625,7 @@ export default function TableScreen() {
                             startTime={new Date(ts.turnStartTime).getTime()}
                             isActive={true}
                             onTimeout={claimTimeout}
+                            gracePeriod={5000}
                         />
                     </View>
                 );

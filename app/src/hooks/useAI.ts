@@ -58,17 +58,9 @@ export function useAI(
     }, [isMyTurn, myCards, communityCards, gamePhase, gameStateForAI, playerIndex, turnId]);
 
     // Handle full auto mode
-    useEffect(() => {
-        if (isFullAuto && suggestion && isMyTurn && !autoActionTriggeredRef.current) {
-            autoActionTriggeredRef.current = true;
-            // Small delay to show the suggestion briefly
-            const timer = setTimeout(() => {
-                onAutoAction?.(suggestion);
-            }, 500);
-
-            return () => clearTimeout(timer);
-        }
-    }, [isFullAuto, suggestion, isMyTurn, onAutoAction]);
+    // Full auto mode logic is now handled by the consumer (TableScreen)
+    // to ensure UI feedback is synchronized with the action execution.
+    // effective no-op here.
 
     const getSuggestionNow = useCallback(() => {
         if (!gameStateForAI || myCards.length !== 2) return null;
