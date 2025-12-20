@@ -47,15 +47,16 @@ export interface PokerTableProps {
 }
 
 // Seat positions around the ellipse (for up to 9 players)
-const SEAT_POSITIONS: Array<'top' | 'top-left' | 'top-right' | 'left' | 'right' | 'bottom' | 'bottom-left' | 'bottom-right'> = [
+const SEAT_POSITIONS: Array<'top' | 'top-left' | 'top-right' | 'left' | 'right' | 'bottom' | 'bottom-left' | 'bottom-right' | 'top-left-center' | 'top-right-center'> = [
     'bottom',       // Seat 0 - Hero position
     'bottom-right', // Seat 1
     'right',        // Seat 2
     'top-right',    // Seat 3
-    'top',          // Seat 4
-    'top-left',     // Seat 5
-    'left',         // Seat 6
-    'bottom-left',  // Seat 7
+    'top-right-center', // Seat 4 (New)
+    'top-left-center',  // Seat 5 (New)
+    'top-left',     // Seat 6
+    'left',         // Seat 7
+    'bottom-left',  // Seat 8
 ];
 
 export function PokerTable({
@@ -120,7 +121,16 @@ export function PokerTable({
 
                 {/* Player seats - render ALL seats */}
                 {seats.map((seatIndex) => {
-                    const position = SEAT_POSITIONS[seatIndex];
+                    // Calculate position relative to Hero
+                    // If Hero is at seat 3, we want seat 3 to be at position 0 (bottom)
+                    // relativeIndex = (seatIndex - heroSeatIndex + totalSeats) % totalSeats
+
+                    let positionIndex = seatIndex;
+                    if (heroSeatIndex !== -1) {
+                        positionIndex = (seatIndex - heroSeatIndex + SEAT_POSITIONS.length) % SEAT_POSITIONS.length;
+                    }
+
+                    const position = SEAT_POSITIONS[positionIndex];
                     const player = playersBySeat.get(seatIndex) || null;
                     const isHero = seatIndex === heroSeatIndex;
 

@@ -24,14 +24,14 @@ interface PlayerSeatProps {
         hasCards: boolean;
         cards?: string[];
     } | null;
-    position: 'top' | 'top-left' | 'top-right' | 'left' | 'right' | 'bottom' | 'bottom-left' | 'bottom-right';
+    position: 'top' | 'top-left' | 'top-right' | 'left' | 'right' | 'bottom' | 'bottom-left' | 'bottom-right' | 'top-left-center' | 'top-right-center';
     isHero?: boolean;
     seatIndex: number;
     onSeatClick?: (seatIndex: number) => void;
 }
 
 export function PlayerSeat({ player, position, isHero = false, seatIndex, onSeatClick }: PlayerSeatProps) {
-    console.log(`[PlayerSeat] Seat ${seatIndex} IsHero=${isHero} HasCards=${player?.hasCards} Cards=${JSON.stringify(player?.cards)}`);
+    // console.log(`[PlayerSeat] Seat ${seatIndex} IsHero=${isHero} HasCards=${player?.hasCards} Cards=${JSON.stringify(player?.cards)}`);
 
     if (!player) {
         // Empty seat - clickable
@@ -147,6 +147,8 @@ function getPositionStyle(position: string) {
         'top': { top: 10, left: '50%', transform: [{ translateX: -50 }] },
         'top-left': { top: '15%', left: '10%' },
         'top-right': { top: '15%', right: '10%' },
+        'top-left-center': { top: 10, left: '35%' },
+        'top-right-center': { top: 10, right: '35%' },
         'left': { top: '50%', left: 10, transform: [{ translateY: -50 }] },
         'right': { top: '50%', right: 10, transform: [{ translateY: -50 }] },
         'bottom-left': { bottom: '15%', left: '10%' },
