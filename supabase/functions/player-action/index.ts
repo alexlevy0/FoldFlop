@@ -155,7 +155,19 @@ Deno.serve(async (req: Request) => {
                 },
             });
 
-            // Hand is over! Delete it so the table goes back to 'waiting' state
+            // Hand is over!
+            // 1. Update persistent stacks in table_players
+            const stackUpdates = newGameState.players.map(p =>
+                adminClient
+                    .from('table_players')
+                    .update({ stack: p.stack })
+                    .eq('table_id', tableId)
+                    .eq('user_id', p.id)
+            );
+
+            await Promise.all(stackUpdates);
+
+            // 2. Delete active hand so the table goes back to 'waiting' state
             // This prevents "Zombie Hands" where the game keeps thinking it's ongoing
             await adminClient
                 .from('active_hands')
