@@ -151,9 +151,9 @@ function getPositionStyle(position: string) {
         'top-right-center': { top: 10, right: '35%' },
         'left': { top: '50%', left: 10, transform: [{ translateY: -50 }] },
         'right': { top: '50%', right: 10, transform: [{ translateY: -50 }] },
-        'bottom-left': { bottom: '15%', left: '10%' },
-        'bottom-right': { bottom: '15%', right: '10%' },
-        'bottom': { bottom: 10, left: '50%', transform: [{ translateX: -50 }] },
+        'bottom-left': { bottom: '10%', left: '10%' },
+        'bottom-right': { bottom: '10%', right: '10%' },
+        'bottom': { bottom: -15, left: '50%', transform: [{ translateX: -50 }] },
     };
     return positions[position] || {};
 }

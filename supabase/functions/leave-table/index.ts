@@ -93,6 +93,53 @@ Deno.serve(async (req: Request) => {
             },
         });
 
+        // Check remaining player count - if <= 1, stop the current game
+        const { data: remainingPlayers, error: countError } = await adminClient
+            .from('table_players')
+            .select('id')
+            .eq('table_id', tableId);
+
+        const remainingCount = remainingPlayers?.length ?? 0;
+
+        if (remainingCount <= 1) {
+            console.log(`Table ${tableId}: Only ${remainingCount} player(s) remaining, ending current hand`);
+
+            // Delete any active hand
+            const { error: deleteHandError } = await adminClient
+                .from('hands')
+                .delete()
+                .eq('table_id', tableId)
+                .is('ended_at', null);
+
+            if (deleteHandError) {
+                console.error('Failed to delete active hand:', deleteHandError);
+            }
+
+            // If there's a remaining player, refund their current bet from the hand
+            if (remainingCount === 1 && remainingPlayers?.[0]) {
+                // Award the pot to the remaining player (they win by default)
+                const { data: activeHand } = await adminClient
+                    .from('hands')
+                    .select('pot, current_bet')
+                    .eq('table_id', tableId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                // Broadcast game ended event
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'game_ended',
+                    payload: {
+                        type: 'game_ended',
+                        tableId,
+                        reason: 'not_enough_players',
+                        timestamp: Date.now(),
+                    },
+                });
+            }
+        }
+
         return jsonResponse({
             success: true,
             data: {

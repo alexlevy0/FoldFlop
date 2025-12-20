@@ -160,6 +160,7 @@ Deno.serve(async (req: Request) => {
             total_bet: p.totalBetThisHand,
             is_folded: p.isFolded,
             is_all_in: p.isAllIn,
+            has_acted: false, // Always reset to false for new hand
         }));
 
         const dealerPlayer = gameState.players[gameState.dealerIndex];

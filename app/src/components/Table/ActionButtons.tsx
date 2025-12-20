@@ -66,7 +66,8 @@ export function ActionButtons({
     };
 
     const handleAllIn = () => {
-        onAction('raise', maxRaise);
+        // Send 'all_in' instead of 'raise' to avoid minRaise validation issues for short stacks
+        onAction('all_in', maxRaise);
         setShowSlider(false);
     };
 
@@ -123,80 +124,77 @@ export function ActionButtons({
                 </View>
             )}
 
-            {/* Action Buttons */}
+            {/* Action Buttons - Always show all 4, disabled when not available */}
             <View style={styles.buttons}>
                 {/* Fold */}
                 <TouchableOpacity
                     style={[
                         styles.button,
                         styles.foldButton,
-                        isSuggested('fold') && styles.buttonSuggested,
+                        !canFold && styles.buttonDisabled,
+                        isSuggested('fold') && canFold && styles.buttonSuggested,
                     ]}
                     onPress={handleFold}
                     disabled={disabled || !canFold}
                 >
-                    <Text style={styles.buttonText}>Fold</Text>
+                    <Text style={[styles.buttonText, !canFold && styles.buttonTextDisabled]}>Fold</Text>
                 </TouchableOpacity>
 
-                {/* Check / Call */}
-                {canCheck ? (
-                    <TouchableOpacity
-                        style={[
-                            styles.button,
-                            styles.checkButton,
-                            isSuggested('check') && styles.buttonSuggested,
-                        ]}
-                        onPress={handleCheck}
-                        disabled={disabled}
-                    >
-                        <Text style={styles.buttonText}>Check</Text>
-                    </TouchableOpacity>
-                ) : canCall ? (
-                    <TouchableOpacity
-                        style={[
-                            styles.button,
-                            styles.callButton,
-                            isSuggested('call') && styles.buttonSuggested,
-                        ]}
-                        onPress={handleCall}
-                        disabled={disabled}
-                    >
-                        <Text style={styles.buttonText}>Call</Text>
-                        <Text style={styles.buttonAmount}>{callAmount.toLocaleString()}</Text>
-                    </TouchableOpacity>
-                ) : null}
+                {/* Check / Call - Always show one or the other */}
+                <TouchableOpacity
+                    style={[
+                        styles.button,
+                        canCheck ? styles.checkButton : styles.callButton,
+                        !canCheck && !canCall && styles.buttonDisabled,
+                        ((isSuggested('check') && canCheck) || (isSuggested('call') && canCall)) && styles.buttonSuggested,
+                    ]}
+                    onPress={canCheck ? handleCheck : handleCall}
+                    disabled={disabled || (!canCheck && !canCall)}
+                >
+                    <Text style={[styles.buttonText, !canCheck && !canCall && styles.buttonTextDisabled]}>
+                        {canCheck ? 'Check' : 'Call'}
+                    </Text>
+                    {canCall && callAmount > 0 && (
+                        <Text style={[styles.buttonAmount, !canCall && styles.buttonTextDisabled]}>
+                            {callAmount.toLocaleString()}
+                        </Text>
+                    )}
+                </TouchableOpacity>
 
                 {/* Bet / Raise */}
-                {(canBet || canRaise) && (
-                    <TouchableOpacity
-                        style={[
-                            styles.button,
-                            styles.raiseButton,
-                            isSuggested('raise') && styles.buttonSuggested,
-                            showSlider && styles.buttonActive,
-                        ]}
-                        onPress={handleBetOrRaise}
-                        disabled={disabled}
-                    >
-                        <Text style={styles.buttonText}>
-                            {showSlider ? 'Confirm' : canBet ? 'Bet' : 'Raise'}
-                        </Text>
-                        {showSlider && (
-                            <Text style={styles.buttonAmount}>{raiseAmount.toLocaleString()}</Text>
-                        )}
-                    </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                    style={[
+                        styles.button,
+                        styles.raiseButton,
+                        !canBet && !canRaise && styles.buttonDisabled,
+                        isSuggested('raise') && (canBet || canRaise) && styles.buttonSuggested,
+                        showSlider && styles.buttonActive,
+                    ]}
+                    onPress={handleBetOrRaise}
+                    disabled={disabled || (!canBet && !canRaise)}
+                >
+                    <Text style={[styles.buttonText, !canBet && !canRaise && styles.buttonTextDisabled]}>
+                        {showSlider ? 'Confirm' : canBet ? 'Bet' : 'Raise'}
+                    </Text>
+                    {showSlider && (
+                        <Text style={styles.buttonAmount}>{raiseAmount.toLocaleString()}</Text>
+                    )}
+                </TouchableOpacity>
 
                 {/* All-In */}
-                {(canBet || canRaise) && (
-                    <TouchableOpacity
-                        style={[styles.button, styles.allInButton]}
-                        onPress={handleAllIn}
-                        disabled={disabled}
-                    >
-                        <Text style={styles.buttonTextAllIn}>All-In</Text>
-                    </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                    style={[
+                        styles.button,
+                        styles.allInButton,
+                        !canBet && !canRaise && styles.buttonDisabled,
+                    ]}
+                    onPress={handleAllIn}
+                    disabled={disabled || (!canBet && !canRaise)}
+                >
+                    <Text style={[styles.buttonTextAllIn, !canBet && !canRaise && styles.buttonTextDisabled]}>
+                        All-In
+                    </Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -314,5 +312,12 @@ const styles = StyleSheet.create({
         color: colors.dark.textSecondary,
         fontSize: fontSize.xs,
         marginTop: 2,
+    },
+    buttonDisabled: {
+        backgroundColor: colors.dark.surface,
+        opacity: 0.5,
+    },
+    buttonTextDisabled: {
+        color: colors.dark.textMuted,
     },
 });

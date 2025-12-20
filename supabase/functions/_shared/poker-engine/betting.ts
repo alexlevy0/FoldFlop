@@ -31,7 +31,8 @@ export function getValidActions(state: GameState): ValidActions {
     // Calculate min raise
     // Min raise = current bet + last raise amount
     // If no raise yet, min raise = current bet + big blind
-    const lastRaise = state.lastRaiseAmount || state.bigBlind;
+    // Fallback to 1 if bigBlind is somehow undefined (defensive programming)
+    const lastRaise = state.lastRaiseAmount || state.bigBlind || 1;
     const minRaiseTotal = state.currentBet + lastRaise;
     const minRaiseAmount = minRaiseTotal - player.currentBet;
 

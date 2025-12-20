@@ -518,12 +518,27 @@ export default function TableScreen() {
                     <Text style={styles.infoText}>
                         Players: {playerCount}/{tableState?.maxPlayers ?? 6}
                     </Text>
-                    <Text style={styles.infoText}>
-                        Phase: {tableState?.phase ?? 'waiting'}
-                    </Text>
-                    <TouchableOpacity onPress={refetch} style={styles.refreshIcon}>
-                        <Text style={styles.refreshIconText}>🔄</Text>
-                    </TouchableOpacity>
+                    {/* Turn indicator in header */}
+                    {isSeated && (tableState as any)?.phase !== 'waiting' && !lastWinner && (
+                        <Text style={isMyTurn ? styles.yourTurnTextHeader : styles.waitingTurnTextHeader}>
+                            {isMyTurn ? '🎯 YOUR TURN!' : '⏳ Waiting...'}
+                        </Text>
+                    )}
+                    <View style={styles.headerButtons}>
+                        <TouchableOpacity onPress={refetch} style={styles.refreshIcon}>
+                            <Text style={styles.refreshIconText}>🔄</Text>
+                        </TouchableOpacity>
+                        {isSeated && (
+                            <TouchableOpacity
+                                style={[styles.aiHeaderToggle, isFullAuto && styles.aiHeaderToggleActive]}
+                                onPress={() => setIsFullAuto(!isFullAuto)}
+                            >
+                                <Text style={styles.aiHeaderToggleText}>
+                                    {isFullAuto ? '🤖 ON' : '🤖 OFF'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
 
                 {/* Hero status */}
@@ -591,26 +606,6 @@ export default function TableScreen() {
                         <TouchableOpacity style={styles.leaveButton} onPress={handleLeave}>
                             <Text style={styles.leaveButtonText}>Leave Table</Text>
                         </TouchableOpacity>
-
-                        {/* Hard Reset Button (Debug) */}
-                        {/* Hard Reset Button (Direct) */}
-                        <TouchableOpacity style={[styles.leaveButton, { backgroundColor: '#442222', marginTop: 10 }]} onPress={async () => {
-                            // Simple confirmation via window.confirm if on web, otherwise direct
-                            // @ts-ignore
-                            if (typeof window !== 'undefined' && window.confirm && !window.confirm('Reset table? This kills the hand.')) return;
-
-                            try {
-                                const { error } = await supabase.functions.invoke('reset-table', {
-                                    body: { tableId: id }
-                                });
-                                if (error) throw error;
-                                refetch();
-                            } catch (e) {
-                                console.error(e);
-                            }
-                        }}>
-                            <Text style={styles.leaveButtonText}>⚠️ Reset Table (Click to KIll)</Text>
-                        </TouchableOpacity>
                     </View>
                 )}
 
@@ -627,11 +622,6 @@ export default function TableScreen() {
                             heroSeatIndex={heroSeatIndex}
                             setAIPendingAction={setAIPendingAction}
                         />
-                        <AICopilotToggle
-                            isFullAuto={isFullAuto}
-                            onToggle={setIsFullAuto}
-                            currentSuggestion={null}
-                        />
                         {isAIPlaying && (
                             <Text style={styles.aiPlayingText}>🤖 AI is playing...</Text>
                         )}
@@ -643,22 +633,10 @@ export default function TableScreen() {
                     </View>
                 )}
 
-
                 {/* Winner banner */}
                 {lastWinner && (
                     <View style={styles.winnerBanner}>
                         <Text style={styles.winnerText}>🏆 {lastWinner.playerName} wins {lastWinner.amount} chips!</Text>
-                    </View>
-                )}
-
-                {/* Turn indicator */}
-                {isSeated && (tableState as any)?.phase !== 'waiting' && !lastWinner && (
-                    <View style={styles.turnIndicator}>
-                        {isMyTurn ? (
-                            <Text style={styles.yourTurnText}>🎯 YOUR TURN!</Text>
-                        ) : (
-                            <Text style={styles.waitingTurnText}>⏳ Waiting for opponent...</Text>
-                        )}
                     </View>
                 )}
             </ScrollView>
@@ -699,14 +677,14 @@ export default function TableScreen() {
                 </View>
             )}
 
-            {/* Action History Box - Bottom Left (adjusted margin if timer is present) */}
-            <View style={[styles.actionHistoryBox, { bottom: isMyTurn ? 220 : 80 }]}>
+            {/* Action History Box - Top Left under header */}
+            <View style={styles.actionHistoryBox}>
                 <Text style={styles.actionHistoryTitle}>📜 Action History</Text>
                 <ScrollView style={styles.actionHistoryScroll} showsVerticalScrollIndicator={false}>
                     {actionHistory.length === 0 ? (
                         <Text style={styles.actionHistoryEmpty}>No actions yet...</Text>
                     ) : (
-                        actionHistory.slice(-10).reverse().map((entry, index) => (
+                        [...actionHistory].reverse().map((entry, index) => (
                             <Text key={index} style={[
                                 styles.actionHistoryEntry,
                                 entry.action.includes('🏆') && styles.actionHistoryWinner
@@ -720,15 +698,15 @@ export default function TableScreen() {
                 </ScrollView>
             </View>
 
-            {/* Action Buttons - Fixed at bottom (always show when it's player's turn) */}
-            {isMyTurn && isSeated && !isAIPlaying && (
+            {/* Action Buttons - Fixed at bottom (always visible when seated, disabled when not turn) */}
+            {isSeated && (
                 <View style={[styles.actionsContainer, { zIndex: 200 }]}>
                     <ActionButtons
-                        canFold={canFold}
-                        canCheck={canCheck}
-                        canCall={canCall}
-                        canBet={canBet}
-                        canRaise={canRaise}
+                        canFold={isMyTurn && canFold}
+                        canCheck={isMyTurn && canCheck}
+                        canCall={isMyTurn && canCall}
+                        canBet={isMyTurn && canBet}
+                        canRaise={isMyTurn && canRaise}
                         callAmount={callAmount}
                         minBet={minBet}
                         maxBet={maxBet}
@@ -915,6 +893,20 @@ const styles = StyleSheet.create({
         marginTop: spacing.md,
         borderRadius: borderRadius.md,
     },
+    turnIndicatorCentered: {
+        position: 'absolute',
+        top: '25%', // Higher up to avoid covering flop cards
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        zIndex: 50,
+        backgroundColor: colors.dark.background + 'CC',
+        marginHorizontal: spacing.xl * 2,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.xl,
+        borderRadius: borderRadius.lg,
+        alignSelf: 'center',
+    },
     yourTurnText: {
         color: colors.dark.accent,
         fontSize: fontSize.xl,
@@ -923,6 +915,15 @@ const styles = StyleSheet.create({
     waitingTurnText: {
         color: colors.dark.textSecondary,
         fontSize: fontSize.base,
+    },
+    yourTurnTextHeader: {
+        color: colors.dark.accent,
+        fontSize: fontSize.sm,
+        fontWeight: '700',
+    },
+    waitingTurnTextHeader: {
+        color: colors.dark.textSecondary,
+        fontSize: fontSize.xs,
     },
     countdownText: {
         color: colors.dark.warning,
@@ -959,15 +960,16 @@ const styles = StyleSheet.create({
     },
     actionHistoryBox: {
         position: 'absolute',
-        bottom: spacing.lg,
+        top: 100, // Under header
         left: spacing.md,
-        width: 220,
-        maxHeight: 180,
+        width: 200,
+        maxHeight: 250,
         backgroundColor: colors.dark.surface + 'E6',
         borderRadius: borderRadius.md,
         padding: spacing.sm,
         borderWidth: 1,
         borderColor: colors.dark.border,
+        zIndex: 60,
     },
     actionHistoryTitle: {
         color: colors.dark.text,
@@ -999,14 +1001,14 @@ const styles = StyleSheet.create({
     handStrengthFloating: {
         position: 'absolute',
         right: spacing.md,
-        bottom: 50, // Above timer bar
+        bottom: 220, // Above action buttons bar
         backgroundColor: colors.dark.primary + '40',
         borderRadius: borderRadius.md,
         paddingVertical: spacing.xs,
         paddingHorizontal: spacing.md,
         borderWidth: 1,
         borderColor: colors.dark.primary,
-        zIndex: 85,
+        zIndex: 250, // Above action buttons (200)
     },
     handStrengthLabel: {
         color: colors.dark.textSecondary,
@@ -1016,6 +1018,28 @@ const styles = StyleSheet.create({
         color: colors.dark.accent,
         fontSize: fontSize.base,
         fontWeight: '700',
+    },
+    headerButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    aiHeaderToggle: {
+        backgroundColor: colors.dark.surface,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        borderRadius: borderRadius.sm,
+        borderWidth: 1,
+        borderColor: colors.dark.border,
+    },
+    aiHeaderToggleActive: {
+        backgroundColor: colors.dark.primary + '30',
+        borderColor: colors.dark.primary,
+    },
+    aiHeaderToggleText: {
+        color: colors.dark.text,
+        fontSize: fontSize.xs,
+        fontWeight: '600',
     },
 });
 
