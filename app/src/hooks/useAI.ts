@@ -20,11 +20,13 @@ export function useAI(
     gamePhase: string,
     isMyTurn: boolean,
     gameStateForAI: GameState | null,
+    turnId: string, // Unique identifier for the current turn
     playerIndex: number,
     onAutoAction?: (suggestion: AISuggestion) => void
 ): UseAIReturn {
     const [suggestion, setSuggestion] = useState<AISuggestion | null>(null);
     const [isFullAuto, setIsFullAuto] = useState(false);
+    const turnIdRef = useRef<string>('');
     const autoActionTriggeredRef = useRef(false);
 
     // Convert string cards to Card objects
@@ -40,16 +42,20 @@ export function useAI(
     useEffect(() => {
         if (!isMyTurn || myCards.length !== 2 || !gameStateForAI) {
             setSuggestion(null);
-            autoActionTriggeredRef.current = false;
             return;
+        }
+
+        // Only reset if it's a new turn
+        if (turnId !== turnIdRef.current) {
+            turnIdRef.current = turnId;
+            autoActionTriggeredRef.current = false;
         }
 
         // Generate suggestion
         const newSuggestion = getSuggestion(gameStateForAI, playerIndex);
         setSuggestion(newSuggestion);
-        autoActionTriggeredRef.current = false;
 
-    }, [isMyTurn, myCards, communityCards, gamePhase, gameStateForAI, playerIndex]);
+    }, [isMyTurn, myCards, communityCards, gamePhase, gameStateForAI, playerIndex, turnId]);
 
     // Handle full auto mode
     useEffect(() => {

@@ -139,6 +139,7 @@ export function PokerTable({
                             position={position}
                             seatIndex={seatIndex}
                             isHero={isHero}
+                            cards={player?.cards} // Pass cards explicitly
                             onSeatClick={onSeatClick}
                         />
                     );

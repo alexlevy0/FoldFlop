@@ -31,6 +31,8 @@ interface PlayerSeatProps {
 }
 
 export function PlayerSeat({ player, position, isHero = false, seatIndex, onSeatClick }: PlayerSeatProps) {
+    console.log(`[PlayerSeat] Seat ${seatIndex} IsHero=${isHero} HasCards=${player?.hasCards} Cards=${JSON.stringify(player?.cards)}`);
+
     if (!player) {
         // Empty seat - clickable
         return (

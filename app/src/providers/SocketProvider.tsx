@@ -41,12 +41,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         // Always update callback to latest
         callbacksRef.current.set(channelName, onEvent);
 
-        // If already subscribed, don't create new channel, but callback is updated
+        // If already subscribed, don't create new channel
         if (channelsRef.current.has(channelName)) {
-            console.log(`[Socket] Already subscribed to ${channelName}, callback updated`);
+            // console.log(`[Socket] Already subscribed to ${channelName}, callback updated`);
             return () => {
-                // Don't unsubscribe channel on cleanup, just remove callback
-                callbacksRef.current.delete(channelName);
+                // When a component unmounts, we don't necessarily want to kill the channel 
+                // if other components use it. For now, we'll just remove the callback reference 
+                // but keep the channel alive to prevent thrashing.
+                // ideally we'd use ref counting.
+                // callbacksRef.current.delete(channelName);
             };
         }
 
@@ -79,6 +82,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
         // Return unsubscribe function
         return () => {
+            // Implementation of Ref Counting or lazy disconnect would be better here.
+            // For now, let's keep it simple: if this unmounts, we disconnect.
+            // BUT, useTable unmounting causes this. 
+            // The issue is likely useTable re-running the effect.
             const ch = channelsRef.current.get(channelName);
             if (ch) {
                 console.log(`[Socket] Unsubscribing from ${channelName}`);

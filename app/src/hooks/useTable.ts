@@ -98,7 +98,8 @@ export function useTable(tableId: string): UseTableReturn {
                 event.type === 'player_action' ||
                 event.type === 'hand_started' ||
                 event.type === 'phase_changed' ||
-                event.type === 'hand_complete'
+                event.type === 'hand_complete' ||
+                event.type === 'table_reset'
             ) {
                 // Debounce to avoid too many refreshes
                 setTimeout(() => {

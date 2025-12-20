@@ -7,7 +7,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { colors, borderRadius, shadows } from '../../styles/theme';
 
 interface CardProps {
-    card: string; // e.g., "Ah" for Ace of hearts
+    card: string | { rank: string; suit: string }; // e.g., "Ah" or {rank: "A", suit: "h"}
     faceDown?: boolean;
     size?: 'sm' | 'md' | 'lg';
 }
@@ -52,7 +52,10 @@ export function Card({ card, faceDown = false, size = 'md' }: CardProps) {
     const dimensions = SIZES[size];
 
     // Handle undefined or invalid card
-    if (!card || card.length < 2) {
+    // Safely check for length if string, or properties if object
+    const isValid = typeof card === 'string' ? card.length >= 2 : (card && 'rank' in card && 'suit' in card);
+
+    if (!isValid) {
         return (
             <View style={[styles.card, styles.faceDown, { width: dimensions.width, height: dimensions.height }]}>
                 <View style={styles.cardBack}>
@@ -72,8 +75,17 @@ export function Card({ card, faceDown = false, size = 'md' }: CardProps) {
         );
     }
 
-    const rank = card[0];
-    const suit = card[1];
+    let rank: string;
+    let suit: string;
+
+    if (typeof card === 'string') {
+        rank = card[0];
+        suit = card[1];
+    } else {
+        rank = card.rank;
+        suit = card.suit;
+    }
+
     const suitColor = SUIT_COLORS[suit] || '#000';
 
     return (

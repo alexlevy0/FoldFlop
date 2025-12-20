@@ -87,6 +87,17 @@ Deno.serve(async (req: Request) => {
                 );
             }
 
+            // Check if this is the requesting user to reveal cards
+            const isHero = user && p.user_id === user.id;
+            let heroCards: string[] | undefined;
+
+            if (isHero && playerGameState && !playerGameState.is_folded && playerGameState.hole_cards) {
+                const cards = playerGameState.hole_cards;
+                heroCards = cards.map((c: any) =>
+                    typeof c === 'string' ? c : `${c.rank}${c.suit}`
+                );
+            }
+
             return {
                 id: p.user_id,
                 username: profile?.username || 'Player',
@@ -101,7 +112,9 @@ Deno.serve(async (req: Request) => {
                 isSmallBlind: activeHand ? p.seat === activeHand.sb_seat : false,
                 isBigBlind: activeHand ? p.seat === activeHand.bb_seat : false,
                 isCurrentPlayer: activeHand ? p.seat === activeHand.current_seat : false,
-                hasCards: activeHand ? !playerGameState?.is_folded : false,
+                isCurrentPlayer: activeHand ? p.seat === activeHand.current_seat : false,
+                hasCards: activeHand ? (!playerGameState?.is_folded && !playerGameState?.is_sitting_out && playerGameState?.hole_cards?.length > 0) : false,
+                cards: heroCards, // Populate cards for hero
             };
         });
 

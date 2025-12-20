@@ -108,41 +108,8 @@ Deno.serve(async (req: Request) => {
             return errorResponse(e.message);
         }
 
-        // Update DB with new state
+        // Update DB with new state (Calculate payload for broadcast and persistence)
         const updatePayload = mapEngineToDb(newGameState, activeHand);
-
-        const { data: updatedData, error: updateError } = await adminClient
-            .from('active_hands')
-            .update({
-                ...updatePayload,
-                version: (activeHand.version || 1) + 1 // Increment version
-            })
-            .eq('id', activeHand.id)
-            .eq('version', activeHand.version || 1) // Optimistic lock
-            .select();
-
-        if (updateError) {
-            console.error('Update error:', updateError);
-            return errorResponse('Failed to update game state - internal error');
-        }
-
-        if (!updatedData || updatedData.length === 0) {
-            return jsonResponse({
-                success: false,
-                error: 'Conflict: Game state changed by another action. Please retry.',
-                code: 'CONFLICT'
-            }, 409);
-        }
-
-        // Mark action as processed
-        if (actionId) {
-            processedActions.add(actionId);
-            // Cleanup
-            if (processedActions.size > 1000) {
-                const firstId = processedActions.values().next().value;
-                processedActions.delete(firstId);
-            }
-        }
 
         // Broadcast the action
         // Get player name for broadcast
@@ -187,6 +154,38 @@ Deno.serve(async (req: Request) => {
                     pots: newGameState.pots
                 },
             });
+
+            // Hand is over! Delete it so the table goes back to 'waiting' state
+            // This prevents "Zombie Hands" where the game keeps thinking it's ongoing
+            await adminClient
+                .from('active_hands')
+                .delete()
+                .eq('id', activeHand.id);
+
+        } else {
+            // Game continues - Update DB with new state
+            const { data: updatedData, error: updateError } = await adminClient
+                .from('active_hands')
+                .update({
+                    ...updatePayload,
+                    version: (activeHand.version || 1) + 1 // Increment version
+                })
+                .eq('id', activeHand.id)
+                .eq('version', activeHand.version || 1) // Optimistic lock
+                .select();
+
+            if (updateError) {
+                console.error('Update error:', updateError);
+                return errorResponse('Failed to update game state - internal error');
+            }
+
+            if (!updatedData || updatedData.length === 0) {
+                return jsonResponse({
+                    success: false,
+                    error: 'Conflict: Game state changed by another action. Please retry.',
+                    code: 'CONFLICT'
+                }, 409);
+            }
         }
 
         return jsonResponse({
@@ -216,11 +215,11 @@ function mapDbToEngine(dbHand: any): GameState {
         holeCards: p.hole_cards as Card[], // DB JSON -> Card[]
         currentBet: p.current_bet,
         totalBetThisHand: p.total_bet,
-        isFolded: p.is_folded,
-        isAllIn: p.is_all_in,
-        isSittingOut: p.is_sitting_out || false,
+        isFolded: !!p.is_folded,
+        isAllIn: !!p.is_all_in,
+        isSittingOut: !!p.is_sitting_out,
         isDisconnected: false,
-    }));
+    })).sort((a, b) => a.seatIndex - b.seatIndex);
 
     // Find indices
     const dealerIndex = players.findIndex(p => p.seatIndex === dbHand.dealer_seat);
@@ -272,7 +271,7 @@ function mapEngineToDb(gameState: GameState, originalHand: any): any {
         user_id: p.id,
         seat: p.seatIndex,
         stack: p.stack,
-        hole_cards: p.hole_cards,
+        hole_cards: p.holeCards,
         current_bet: p.currentBet,
         total_bet: p.totalBetThisHand,
         is_folded: p.isFolded,
@@ -281,7 +280,7 @@ function mapEngineToDb(gameState: GameState, originalHand: any): any {
 
     const currentSeat = gameState.currentPlayerIndex !== -1
         ? gameState.players[gameState.currentPlayerIndex].seatIndex
-        : originalHand.current_seat;
+        : -1;
 
     // Calculate total pot from pots array for display
     const totalPot = (gameState.pots || []).reduce((sum, p) => sum + p.amount, 0)

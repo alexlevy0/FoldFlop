@@ -196,6 +196,7 @@ export function getNextPlayerIndex(state: GameState): number {
 
     while (attempts < numPlayers) {
         const player = state.players[nextIndex];
+        // console.log(`Checking player ${nextIndex} (Seat ${player?.seatIndex}): Folded=${player?.isFolded}, AllIn=${player?.isAllIn}, Sitting=${player?.isSittingOut}`);
         if (player && !player.isFolded && !player.isAllIn && !player.isSittingOut) {
             return nextIndex;
         }
@@ -214,9 +215,12 @@ export function getFirstToActIndex(state: GameState): number {
     const numPlayers = state.players.length;
 
     if (state.phase === 'preflop') {
+        // Count active players to determine if this is heads-up
+        const activeCount = state.players.filter(p => !p.isSittingOut && p.stack > 0).length;
+
         // First to act is left of big blind (UTG)
         // In heads-up, button (SB) acts first preflop
-        if (numPlayers === 2) {
+        if (activeCount === 2) {
             return state.dealerIndex; // Button/SB acts first
         }
         // Start from left of BB

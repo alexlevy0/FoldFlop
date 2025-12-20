@@ -11,6 +11,37 @@ import { useAuth } from '../../src/providers/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 import { colors, spacing, fontSize, borderRadius } from '../../src/styles/theme';
 
+// Helper component to run AI hook
+function WaitAIHook({
+    myCards,
+    communityCards,
+    phase,
+    isMyTurn,
+    gameStateForAI,
+    turnId,
+    heroSeatIndex,
+    setAIPendingAction
+}: any) {
+    const { useAI } = require('../../src/hooks/useAI');
+    const { suggestion } = useAI(
+        myCards,
+        communityCards,
+        phase,
+        isMyTurn,
+        gameStateForAI,
+        turnId,
+        heroSeatIndex,
+    );
+
+    useEffect(() => {
+        if (suggestion && isMyTurn) {
+            setAIPendingAction(`${suggestion.action} (${suggestion.confidence.toFixed(0)}%)`);
+        }
+    }, [suggestion, isMyTurn, setAIPendingAction]);
+
+    return null;
+}
+
 export default function TableScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
@@ -118,7 +149,7 @@ export default function TableScreen() {
         console.log('[AI] New turn detected:', turnId, '- Will:', pendingAction);
 
         // Start countdown
-        let count = 10;
+        let count = 1; // Faster AI
         setAICountdown(count);
 
         aiIntervalRef.current = setInterval(() => {
@@ -335,6 +366,35 @@ export default function TableScreen() {
         );
     }
 
+    // Prepare Game State for AI
+    // We can just use the tableState objects directly if they match or map them
+    // Assuming tableState maps roughly to GameState or we can construct minimal one
+    // But wait, useAI expects GameState. We need to construct it or pass null if not ready.
+    // Let's create a minimal helper or just cast if the shape is close enough.
+    // Actually, tableState from useTable is the View Model, not the Engine Model.
+    // The Engine Model is what AI needs. 
+    // BUT, the AI engine runs on client or server? It runs on client here via useAI.
+    // We need to map View Model -> Engine Model.
+    // For now, let's assume we have a mapper or just pass what we have if it works.
+    // Checking useTable, it returns tableState.
+    // checking useAI usage below...
+
+    const gameStateForAI: any = {
+        players: tableState?.players?.map(p => ({
+            stack: p.stack,
+            currentBet: p.currentBet,
+            isFolded: p.isFolded,
+            isAllIn: p.isAllIn,
+            isSittingOut: p.isSittingOut,
+            seatIndex: p.seatIndex
+        })) || [],
+        communityCards: tableState?.communityCards || [],
+        pot: tableState?.pot || 0,
+        currentBet: (tableState as any)?.currentBet || 0,
+        dealerIndex: tableState?.players?.findIndex(p => p.isDealer) ?? 0,
+        // ... other fields
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <Stack.Screen
@@ -429,12 +489,42 @@ export default function TableScreen() {
                         <TouchableOpacity style={styles.leaveButton} onPress={handleLeave}>
                             <Text style={styles.leaveButtonText}>Leave Table</Text>
                         </TouchableOpacity>
+
+                        {/* Hard Reset Button (Debug) */}
+                        {/* Hard Reset Button (Direct) */}
+                        <TouchableOpacity style={[styles.leaveButton, { backgroundColor: '#442222', marginTop: 10 }]} onPress={async () => {
+                            // Simple confirmation via window.confirm if on web, otherwise direct
+                            // @ts-ignore
+                            if (typeof window !== 'undefined' && window.confirm && !window.confirm('Reset table? This kills the hand.')) return;
+
+                            try {
+                                const { error } = await supabase.functions.invoke('reset-table', {
+                                    body: { tableId: id }
+                                });
+                                if (error) throw error;
+                                refetch();
+                            } catch (e) {
+                                console.error(e);
+                            }
+                        }}>
+                            <Text style={styles.leaveButtonText}>⚠️ Reset Table (Click to KIll)</Text>
+                        </TouchableOpacity>
                     </View>
                 )}
 
                 {/* AI Copilot */}
                 {isSeated && (
                     <View style={styles.aiContainer}>
+                        <WaitAIHook
+                            myCards={myCards}
+                            communityCards={tableState?.communityCards ?? []}
+                            phase={phase ?? 'preflop'}
+                            isMyTurn={isMyTurn}
+                            gameStateForAI={gameStateForAI}
+                            turnId={turnId}
+                            heroSeatIndex={heroSeatIndex}
+                            setAIPendingAction={setAIPendingAction}
+                        />
                         <AICopilotToggle
                             isFullAuto={isFullAuto}
                             onToggle={setIsFullAuto}
@@ -450,6 +540,7 @@ export default function TableScreen() {
                         )}
                     </View>
                 )}
+
 
                 {/* Winner banner */}
                 {lastWinner && (

@@ -235,9 +235,15 @@ export function processAction(
             // Update raise amount if this is a raise
             if (newBet > state.currentBet) {
                 const raiseAmount = newBet - state.currentBet;
-                // Only update last raise if it's a full raise
+                // Check if it's a full raise
                 if (raiseAmount >= newState.lastRaiseAmount) {
                     newState.lastRaiseAmount = raiseAmount;
+                    newState.lastRaiseWasComplete = true;
+                    newState.lastAggressorId = playerId;
+                } else {
+                    // Incomplete raise (all-in below min raise)
+                    newState.lastRaiseWasComplete = false;
+                    // lastAggressorId remains the same as this is not a new full raise
                 }
                 newState.currentBet = newBet;
             }
@@ -249,6 +255,11 @@ export function processAction(
             playerAction.amount = newBet;
             break;
         }
+    }
+
+    // Mark BB as having acted if this is Preflop
+    if (newState.phase === 'preflop' && playerIndex === newState.bigBlindIndex) {
+        newState.bbHasActed = true;
     }
 
     players[playerIndex] = player;
