@@ -348,6 +348,56 @@ export default function TableScreen() {
     }) ?? [];
 
     // Loading state
+
+
+    // Prepare Game State for AI
+    // We can just use the tableState objects directly if they match or map them
+    // Assuming tableState maps roughly to GameState or we can construct minimal one
+    // But wait, useAI expects GameState. We need to construct it or pass null if not ready.
+    // Let's create a minimal helper or just cast if the shape is close enough.
+    // Actually, tableState from useTable is the View Model, not the Engine Model.
+    // The Engine Model is what AI needs. 
+    // BUT, the AI engine runs on client or server? It runs on client here via useAI.
+    // We need to map View Model -> Engine Model.
+    // For now, let's assume we have a mapper or just pass what we have if it works.
+    // Checking useTable, it returns tableState.
+    // checking useAI usage below...
+
+    // Prepare Game State for AI - Memorized to prevent loops
+    const gameStateForAI = React.useMemo(() => {
+        if (!tableState) return null;
+
+        // Helper to parse card string to object
+        const parseCardString = (cardStr: string | any) => {
+            if (typeof cardStr !== 'string') return cardStr;
+            if (cardStr.length < 2) return null;
+            return { rank: cardStr.slice(0, -1), suit: cardStr.slice(-1) };
+        };
+
+        return {
+            players: tableState.players?.map(p => ({
+                id: p.id,
+                stack: p.stack,
+                currentBet: p.currentBet,
+                isFolded: p.isFolded,
+                isAllIn: p.isAllIn,
+                isSittingOut: p.isSittingOut,
+                seatIndex: p.seatIndex,
+                // Only provide hole cards for hero
+                holeCards: (p.id === user?.id && myCards)
+                    ? myCards.map(parseCardString)
+                    : null
+            })) || [],
+            communityCards: tableState.communityCards?.map(parseCardString) || [],
+            pot: tableState.pot || 0,
+            currentBet: (tableState as any)?.currentBet || 0,
+            dealerIndex: tableState.players?.findIndex(p => p.isDealer) ?? 0,
+            smallBlind: tableState.blinds?.sb || 10,
+            bigBlind: tableState.blinds?.bb || 20,
+        };
+    }, [tableState, myCards, user?.id]);
+
+    // Loading state
     if (isLoading) {
         return (
             <SafeAreaView style={styles.container}>
@@ -371,35 +421,6 @@ export default function TableScreen() {
             </SafeAreaView>
         );
     }
-
-    // Prepare Game State for AI
-    // We can just use the tableState objects directly if they match or map them
-    // Assuming tableState maps roughly to GameState or we can construct minimal one
-    // But wait, useAI expects GameState. We need to construct it or pass null if not ready.
-    // Let's create a minimal helper or just cast if the shape is close enough.
-    // Actually, tableState from useTable is the View Model, not the Engine Model.
-    // The Engine Model is what AI needs. 
-    // BUT, the AI engine runs on client or server? It runs on client here via useAI.
-    // We need to map View Model -> Engine Model.
-    // For now, let's assume we have a mapper or just pass what we have if it works.
-    // Checking useTable, it returns tableState.
-    // checking useAI usage below...
-
-    const gameStateForAI: any = {
-        players: tableState?.players?.map(p => ({
-            stack: p.stack,
-            currentBet: p.currentBet,
-            isFolded: p.isFolded,
-            isAllIn: p.isAllIn,
-            isSittingOut: p.isSittingOut,
-            seatIndex: p.seatIndex
-        })) || [],
-        communityCards: tableState?.communityCards || [],
-        pot: tableState?.pot || 0,
-        currentBet: (tableState as any)?.currentBet || 0,
-        dealerIndex: tableState?.players?.findIndex(p => p.isDealer) ?? 0,
-        // ... other fields
-    };
 
     return (
         <SafeAreaView style={styles.container}>
