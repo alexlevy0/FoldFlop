@@ -259,34 +259,71 @@ export function getPostflopSuggestion(
     const currentPot = state.pots.reduce((sum, p) => sum + p.amount, 0) +
         state.players.reduce((sum, p) => sum + p.currentBet, 0);
     const toCall = state.currentBet - player.currentBet;
-    const { potOdds, impliedOdds } = calculateOdds(currentPot, toCall, player.stack);
+    const { potOdds } = calculateOdds(currentPot, toCall, player.stack);
     const spr = player.stack / Math.max(currentPot, 1);
 
-    // Decision logic based on hand strength tiers
+    // Random factor for unpredictability (0.0 to 0.15)
+    const randomBoost = Math.random() * 0.15;
+    const effectiveStrength = handStrength + randomBoost;
 
-    // VERY STRONG (hand strength > 0.8) - Value bet/raise
-    if (handStrength > 0.8) {
-        if (validActions.canRaise && state.currentBet > 0) {
-            const raiseSize = Math.min(
-                currentPot * 0.75, // 75% pot
-                validActions.maxRaise
+    // Check if we should c-bet (first to act post-flop on flop)
+    const isFlop = communityCards.length === 3;
+    const isFirstToAct = state.currentBet === 0;
+    const wasAggressor = player.currentBet > 0 || state.lastAggressorId === player.id;
+
+    // --- C-BET LOGIC ---
+    if (isFlop && isFirstToAct && validActions.canBet) {
+        const numOpponents = state.players.filter(p => !p.isFolded && p.id !== player.id).length;
+        const position = playerIndex > state.dealerIndex ? 'IP' : 'OOP';
+        const cbetDecision = shouldCBet(holeCards, communityCards, wasAggressor, position, numOpponents);
+
+        if (cbetDecision.shouldBet) {
+            const betSize = Math.min(
+                currentPot * cbetDecision.sizePct,
+                validActions.maxBet
             );
             return {
+                action: 'bet',
+                amount: Math.max(validActions.minBet, Math.round(betSize)),
+                confidence: 0.75,
+                reason: cbetDecision.reason,
+            };
+        }
+    }
+
+    // --- BLUFF LOGIC (Dry boards with air) ---
+    if (isFirstToAct && validActions.canBet && boardAnalysis.isDry && effectiveStrength < 0.3) {
+        // Bluff ~30% of the time on dry boards with weak hands
+        if (Math.random() < 0.3) {
+            const betSize = Math.min(currentPot * 0.33, validActions.maxBet);
+            return {
+                action: 'bet',
+                amount: Math.max(validActions.minBet, Math.round(betSize)),
+                confidence: 0.55,
+                reason: 'Bluffing on dry board',
+            };
+        }
+    }
+
+    // --- VALUE BETTING LOGIC ---
+
+    // VERY STRONG (effective strength > 0.75) - Raise/Bet for value
+    if (effectiveStrength > 0.75) {
+        if (validActions.canRaise && state.currentBet > 0) {
+            const raiseSize = Math.min(currentPot * 0.75, validActions.maxRaise);
+            return {
                 action: 'raise',
-                amount: Math.max(validActions.minRaise, raiseSize),
+                amount: Math.max(validActions.minRaise, Math.round(raiseSize)),
                 confidence: 0.85,
                 reason: `Strong hand (${evaluatedHand?.description}), raising for value`,
             };
         }
 
         if (validActions.canBet && state.currentBet === 0) {
-            const betSize = Math.min(
-                currentPot * 0.66, // 66% pot
-                validActions.maxBet
-            );
+            const betSize = Math.min(currentPot * 0.66, validActions.maxBet);
             return {
                 action: 'bet',
-                amount: Math.max(validActions.minBet, betSize),
+                amount: Math.max(validActions.minBet, Math.round(betSize)),
                 confidence: 0.85,
                 reason: `Strong hand (${evaluatedHand?.description}), betting for value`,
             };
@@ -297,26 +334,20 @@ export function getPostflopSuggestion(
         }
     }
 
-    // STRONG (hand strength > 0.6) - Bet/call
-    if (handStrength > 0.6) {
+    // STRONG (effective strength > 0.5) - Bet or call with good odds
+    if (effectiveStrength > 0.5) {
         if (validActions.canBet && state.currentBet === 0) {
-            const betSize = Math.min(
-                currentPot * 0.5, // 50% pot
-                validActions.maxBet
-            );
+            const betSize = Math.min(currentPot * 0.5, validActions.maxBet);
             return {
                 action: 'bet',
-                amount: Math.max(validActions.minBet, betSize),
+                amount: Math.max(validActions.minBet, Math.round(betSize)),
                 confidence: 0.7,
                 reason: `Good hand (${evaluatedHand?.description}), betting`,
             };
         }
 
-        if (validActions.canCall) {
-            // Check pot odds
-            if (potOdds < 0.3) { // Good odds
-                return { action: 'call', confidence: 0.75, reason: 'Good hand with good pot odds' };
-            }
+        if (validActions.canCall && potOdds < 0.35) {
+            return { action: 'call', confidence: 0.75, reason: 'Good hand with good pot odds' };
         }
 
         if (validActions.canCheck) {
@@ -324,52 +355,36 @@ export function getPostflopSuggestion(
         }
     }
 
-    // MEDIUM (hand strength > 0.4) - Check/call with draws
-    if (handStrength > 0.4 || drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded) {
-        // Check if we have draw equity
-        const drawEquity = drawAnalysis.outs * 0.02; // Rough equity per out
+    // MEDIUM (effective strength > 0.35 or has draws) - Check/call
+    if (effectiveStrength > 0.35 || drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded) {
+        const drawEquity = drawAnalysis.outs * 0.02;
         const combinedEquity = handStrength + drawEquity;
 
         if (validActions.canCheck) {
             return { action: 'check', confidence: 0.7, reason: 'Medium hand, checking' };
         }
 
-        if (validActions.canCall) {
-            // Check if call is profitable
-            const neededEquity = potOdds;
-            if (combinedEquity > neededEquity) {
-                return {
-                    action: 'call',
-                    confidence: 0.65,
-                    reason: `Drawing hand with ${drawAnalysis.outs} outs, odds are good`,
-                };
-            }
-        }
-    }
-
-    // WEAK (hand strength < 0.4) - Check/fold
-    if (validActions.canCheck) {
-        return { action: 'check', confidence: 0.8, reason: 'Weak hand, checking' };
-    }
-
-    // Can't check, must call or fold
-    if (validActions.canCall) {
-        // Small bet relative to pot - might be worth a call with draws
-        if (toCall < currentPot * 0.25 && (drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded)) {
+        if (validActions.canCall && combinedEquity > potOdds) {
             return {
                 action: 'call',
-                confidence: 0.5,
-                reason: 'Small bet, calling with draw',
+                confidence: 0.65,
+                reason: `Drawing hand with ${drawAnalysis.outs} outs, odds are good`,
             };
         }
     }
 
-    // Default to fold
-    return {
-        action: 'fold',
-        confidence: 0.75,
-        reason: 'Weak hand facing aggression',
-    };
+    // WEAK - Check if possible, otherwise fold
+    if (validActions.canCheck) {
+        return { action: 'check', confidence: 0.8, reason: 'Weak hand, checking' };
+    }
+
+    // Small bet - might call with draws
+    if (validActions.canCall && toCall < currentPot * 0.25 && (drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded)) {
+        return { action: 'call', confidence: 0.5, reason: 'Small bet, calling with draw' };
+    }
+
+    // Default fold
+    return { action: 'fold', confidence: 0.75, reason: 'Weak hand facing aggression' };
 }
 
 /**

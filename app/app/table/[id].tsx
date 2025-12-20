@@ -2,7 +2,7 @@
  * Table Screen - Main game screen for a single table
  */
 
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { PokerTable, ActionButtons, AICopilotToggle } from '../../src/components/Table';
@@ -12,6 +12,7 @@ import { useTable } from '../../src/hooks/useTable';
 import { useAuth } from '../../src/providers/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 import { colors, spacing, fontSize, borderRadius } from '../../src/styles/theme';
+import { evaluateHand, Card } from '@foldflop/poker-engine';
 
 // Helper component to run AI hook
 function WaitAIHook({
@@ -96,6 +97,34 @@ export default function TableScreen() {
     const lastTurnIdRef = useRef<string>('');
     const lastProcessedWinnerRef = useRef<string>('');
     const lastProcessedActionKeyRef = useRef<string>('');
+
+    // Calculate current hand strength (for display)
+    const handDescription = useMemo(() => {
+        if (!myCards || myCards.length < 2) return null;
+
+        const communityCards = (tableState as any)?.communityCards;
+        if (!communityCards || communityCards.length < 3) {
+            // Preflop - just show hole cards info
+            return null;
+        }
+
+        try {
+            // Convert string cards to Card objects if needed
+            const parseCard = (c: string | Card): Card => {
+                if (typeof c === 'object' && 'rank' in c && 'suit' in c) return c as Card;
+                // Parse "Ah" format to {rank: 'A', suit: 'h'}
+                const rank = c.slice(0, -1);
+                const suit = c.slice(-1);
+                return { rank, suit } as Card;
+            };
+
+            const allCards = [...myCards.map(parseCard), ...communityCards.map(parseCard)];
+            const result = evaluateHand(allCards);
+            return result?.description || null;
+        } catch {
+            return null;
+        }
+    }, [myCards, tableState]);
 
     // Generate a unique turn ID to detect when a new turn starts
     const phase = (tableState as any)?.phase ?? 'waiting';
@@ -321,6 +350,26 @@ export default function TableScreen() {
             setIsDealing(false);
         }
     }, [id, refetch]);
+
+    // Auto-deal next hand after showdown (5 second delay)
+    useEffect(() => {
+        // Only auto-deal if:
+        // 1. We're seated
+        // 2. Phase is 'waiting' (hand complete)
+        // 3. There are at least 2 players
+        // 4. We're not already dealing
+        const canAutoDeal = isSeated && playerCount >= 2 && (phase === 'waiting' || !phase) && !isDealing;
+
+        if (!canAutoDeal) return;
+
+        console.log('[AutoDeal] Starting 5 second countdown...');
+        const timer = setTimeout(() => {
+            console.log('[AutoDeal] Dealing next hand!');
+            handleDealHand();
+        }, 5000);
+
+        return () => clearTimeout(timer);
+    }, [isSeated, playerCount, phase, isDealing, handleDealHand]);
 
     // Handle seat click (join table)
     const handleSeatClick = useCallback(async (seatIndex: number) => {
@@ -642,6 +691,14 @@ export default function TableScreen() {
                 );
             })()}
 
+            {/* Hand Strength Display - Right side, above timer, always visible when we have cards */}
+            {isSeated && handDescription && (
+                <View style={styles.handStrengthFloating}>
+                    <Text style={styles.handStrengthLabel}>🃏 Votre Main</Text>
+                    <Text style={styles.handStrengthValue}>{handDescription}</Text>
+                </View>
+            )}
+
             {/* Action History Box - Bottom Left (adjusted margin if timer is present) */}
             <View style={[styles.actionHistoryBox, { bottom: isMyTurn ? 220 : 80 }]}>
                 <Text style={styles.actionHistoryTitle}>📜 Action History</Text>
@@ -937,6 +994,27 @@ const styles = StyleSheet.create({
     },
     actionHistoryWinner: {
         color: colors.dark.success,
+        fontWeight: '700',
+    },
+    handStrengthFloating: {
+        position: 'absolute',
+        right: spacing.md,
+        bottom: 50, // Above timer bar
+        backgroundColor: colors.dark.primary + '40',
+        borderRadius: borderRadius.md,
+        paddingVertical: spacing.xs,
+        paddingHorizontal: spacing.md,
+        borderWidth: 1,
+        borderColor: colors.dark.primary,
+        zIndex: 85,
+    },
+    handStrengthLabel: {
+        color: colors.dark.textSecondary,
+        fontSize: fontSize.xs,
+    },
+    handStrengthValue: {
+        color: colors.dark.accent,
+        fontSize: fontSize.base,
         fontWeight: '700',
     },
 });
