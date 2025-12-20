@@ -137,7 +137,7 @@ Deno.serve(async (req: Request) => {
             const { data: updatedHandData, error: updateError } = await adminClient
                 .from('active_hands')
                 .update({
-                    round: newGameState.phase,
+                    phase: newGameState.phase, // Correct column name
                     community_cards: newGameState.communityCards,
                     current_seat: -1, // No one's turn
                     current_bet: 0,
@@ -145,9 +145,7 @@ Deno.serve(async (req: Request) => {
                     last_aggressor_id: null,
                     pots: newGameState.pots,
                     player_states: mapEngineToDb(newGameState, activeHand).player_states,
-                    winners: newGameState.winners, // Store winners!
-                    is_hand_complete: true,
-                    updated_at: new Date().toISOString(),
+                    // updated_at column does not exist
                     version: (activeHand.version || 1) + 1
                 })
                 .eq('id', activeHand.id)

@@ -244,14 +244,22 @@ export default function TableScreen() {
 
                 const doAction = async () => {
                     try {
+                        let result;
                         if (execCheck) {
-                            await performAction('check');
+                            result = await performAction('check');
                         } else if (execCall) {
                             const amt = Math.min(execToCall, heroPlayer?.stack ?? 0);
-                            await performAction('call', amt);
+                            result = await performAction('call', amt);
                         } else {
-                            await performAction('fold');
+                            result = await performAction('fold');
                         }
+
+                        // Auto-recover AI
+                        if (result && !result.success && result.error === 'No active hand at this table') {
+                            console.log('[AI] Hand lost sync, refreshing...');
+                            await refetch();
+                        }
+
                         // Action history will be updated via Realtime broadcast
                     } catch (err) {
                         console.error('[AI] Action error:', err);
@@ -287,6 +295,14 @@ export default function TableScreen() {
         const result = await performAction(action, amount);
         if (!result.success) {
             console.error('Action failed:', result.error);
+
+            // Auto-recover from "No active hand" error
+            if (result.error === 'No active hand at this table') {
+                console.log('Hand lost sync, refreshing...');
+                await refetch();
+                return;
+            }
+
             Alert.alert('Error', result.error || 'Action failed');
         }
         // Action history will be updated via Realtime broadcast

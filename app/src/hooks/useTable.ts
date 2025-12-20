@@ -122,6 +122,8 @@ export function useTable(tableId: string): UseTableReturn {
             // Capture winner info from hand_complete event
             if (event.type === 'hand_complete' && 'winners' in event) {
                 const eventAny = event as any;
+                console.log('[useTable] Hand Complete Event:', JSON.stringify(eventAny.winners));
+
                 if (eventAny.winners && eventAny.winners.length > 0) {
                     const winnerData = eventAny.winners[0];
 
@@ -141,7 +143,10 @@ export function useTable(tableId: string): UseTableReturn {
                         amount: winnerData.amount ?? eventAny.pot ?? 0,
                         hand: winnerData.hand ? {
                             rank: winnerData.hand.rank,
-                            cards: winnerData.hand.cards.map((c: any) => c.rank + c.suit), // Map object back to string format if needed or reuse if strings
+                            // Robust mapping: handle both {rank, suit} objects and "Ah" strings
+                            cards: winnerData.hand.cards.map((c: any) =>
+                                typeof c === 'string' ? c : (c.rank && c.suit ? c.rank + c.suit : '??')
+                            ),
                             description: winnerData.hand.description
                         } : null
                     });
