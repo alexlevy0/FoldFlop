@@ -219,40 +219,27 @@ Deno.serve(async (req: Request) => {
         if (remainingCount <= 1) {
             console.log(`Table ${tableId}: Only ${remainingCount} player(s) remaining, ending current hand`);
 
-            // Delete any active hand
+            // Delete any active hand to reset the table state
             const { error: deleteHandError } = await adminClient
-                .from('hands')
+                .from('active_hands')
                 .delete()
-                .eq('table_id', tableId)
-                .is('ended_at', null);
+                .eq('table_id', tableId);
 
             if (deleteHandError) {
                 console.error('Failed to delete active hand:', deleteHandError);
             }
 
-            // If there's a remaining player, refund their current bet from the hand
-            if (remainingCount === 1 && remainingPlayers?.[0]) {
-                // Award the pot to the remaining player (they win by default)
-                const { data: activeHand } = await adminClient
-                    .from('hands')
-                    .select('pot, current_bet')
-                    .eq('table_id', tableId)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .single();
-
-                // Broadcast game ended event
-                await channel.send({
-                    type: 'broadcast',
-                    event: 'game_ended',
-                    payload: {
-                        type: 'game_ended',
-                        tableId,
-                        reason: 'not_enough_players',
-                        timestamp: Date.now(),
-                    },
-                });
-            }
+            // Broadcast game ended event
+            await channel.send({
+                type: 'broadcast',
+                event: 'game_ended',
+                payload: {
+                    type: 'game_ended',
+                    tableId,
+                    reason: 'not_enough_players',
+                    timestamp: Date.now(),
+                },
+            });
         }
 
         return jsonResponse({

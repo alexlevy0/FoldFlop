@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // Get players at table
-        const { data: tablePlayers, error: playersError } = await supabase
+        const { data: tablePlayers, error: playersError } = await adminClient
             .from('table_players')
             .select('id, user_id, seat, stack, is_sitting_out')
             .eq('table_id', tableId)
@@ -98,11 +98,14 @@ Deno.serve(async (req: Request) => {
             holeCards: null,
             currentBet: 0,
             totalBetThisHand: 0,
-            isFolded: false, // Will be set by engine if sitting out? Engine filters sitting out.
+            isFolded: false,
             isAllIn: false,
-            isSittingOut: p.is_sitting_out,
+            // FORCE FALSE for debugging - rule out DB state issue
+            isSittingOut: false, // p.is_sitting_out,
             isDisconnected: false,
         }));
+
+        console.log('[DealHand] Engine Players:', enginePlayers.map(p => ({ id: p.id, seat: p.seatIndex, stack: p.stack, sitOut: p.isSittingOut })));
 
         // 2. Prepare Table Config
         const tableConfig: TableConfig = {
@@ -132,7 +135,15 @@ Deno.serve(async (req: Request) => {
         gameState.handNumber = previousHandNumber + 1;
 
         // Shuffle, deal, post blinds
+        console.log('[DealHand] Starting hand with players:', gameState.players.length);
         gameState = startHand(gameState);
+        console.log('[DealHand] Hand started. Players:', gameState.players.map(p => ({
+            id: p.id,
+            stack: p.stack,
+            isFolded: p.isFolded,
+            isSittingOut: p.isSittingOut,
+            holeCards: p.holeCards
+        })));
 
 
         // 5. Map back to DB Active Hand

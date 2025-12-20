@@ -98,6 +98,11 @@ Deno.serve(async (req: Request) => {
                 );
             }
 
+            // Debug log
+            if (isHero) {
+                console.log(`[GetTableState] Hero state: isFolded=${playerGameState?.is_folded}, hasCards=${!!heroCards}, activeHand=${!!activeHand}`);
+            }
+
             return {
                 id: p.user_id,
                 username: profile?.username || 'Player',
