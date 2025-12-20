@@ -53,10 +53,11 @@ Deno.serve(async (req: Request) => {
             return errorResponse('Table not found');
         }
 
-        // Check/Delete existing active hand
+        // Check for existing active hand (for previous dealer/hand info)
+        // We use upsert with ON CONFLICT for atomic operation
         const { data: existingHand } = await adminClient
             .from('active_hands')
-            .select('*')
+            .select('dealer_seat, hand_number')
             .eq('table_id', tableId)
             .single();
 
@@ -66,12 +67,6 @@ Deno.serve(async (req: Request) => {
         if (existingHand) {
             previousDealerSeat = existingHand.dealer_seat;
             previousHandNumber = existingHand.hand_number;
-
-            // Delete the old hand
-            await adminClient
-                .from('active_hands')
-                .delete()
-                .eq('id', existingHand.id);
         }
 
         // Get players at table
@@ -179,48 +174,49 @@ Deno.serve(async (req: Request) => {
         // Initial visual "pot" = SB + BB.
         const initialPot = playerStates.reduce((sum, p) => sum + p.current_bet, 0);
 
-        const { data: activeHand, error: insertError } = await adminClient
+        // Use upsert with ON CONFLICT for atomic hand replacement
+        // This prevents race conditions between delete and insert
+        const handData = {
+            table_id: tableId,
+            hand_number: gameState.handNumber,
+            phase: gameState.phase, // 'preflop'
+
+            dealer_seat: dealerPlayer.seatIndex,
+            sb_seat: sbPlayer.seatIndex,
+            bb_seat: bbPlayer.seatIndex,
+            current_seat: currentPlayer.seatIndex,
+
+            current_bet: gameState.currentBet,
+            last_raise_amount: gameState.lastRaiseAmount,
+
+            pot: initialPot,
+            community_cards: gameState.communityCards,
+            deck: gameState.deck,
+            player_states: playerStates,
+
+            // New fields
+            pots: gameState.pots,
+            last_aggressor_id: gameState.lastAggressorId,
+            last_raise_was_complete: gameState.lastRaiseWasComplete,
+            bb_has_acted: gameState.bbHasActed,
+            version: 1, // Reset version for new hand
+
+            turn_started_at: new Date(gameState.turnStartedAt).toISOString(),
+            started_at: new Date().toISOString(),
+        };
+
+        const { data: activeHand, error: upsertError } = await adminClient
             .from('active_hands')
-            .insert({
-                table_id: tableId,
-                hand_number: gameState.handNumber,
-                phase: gameState.phase, // 'preflop'
-
-                dealer_seat: dealerPlayer.seatIndex,
-                sb_seat: sbPlayer.seatIndex,
-                bb_seat: bbPlayer.seatIndex,
-                current_seat: currentPlayer.seatIndex,
-
-                current_bet: gameState.currentBet, // should be BB
-                last_raise_amount: gameState.lastRaiseAmount, // 0 or BB? 
-                // startHand set lastRaiseAmount? 
-                // game.ts: `minRaise: tableConfig.bigBlind`
-                // startHand posts blinds. 
-                // It might not set lastRaiseAmount to BB unless it counts as a raise?
-                // Preflop BB is effectively a check if no raise? No, it's a bet.
-                // Engine logic for preflop minRaise usually BB.
-                // Let's assume engine state is correct.
-
-                pot: initialPot,
-                community_cards: gameState.communityCards,
-                deck: gameState.deck,
-                player_states: playerStates, // Stores hole cards securely in JSON
-
-                // New fields
-                pots: gameState.pots,
-                last_aggressor_id: gameState.lastAggressorId,
-                last_raise_was_complete: gameState.lastRaiseWasComplete,
-                bb_has_acted: gameState.bbHasActed,
-                version: 1, // Start version 1
-
-                turn_started_at: new Date(gameState.turnStartedAt).toISOString(),
+            .upsert(handData, {
+                onConflict: 'table_id', // Uses the one_active_hand_per_table constraint
+                ignoreDuplicates: false, // Replace existing row
             })
             .select()
             .single();
 
-        if (insertError) {
-            console.error('Insert error:', insertError);
-            return errorResponse('Failed to start hand: ' + insertError.message);
+        if (upsertError) {
+            console.error('Upsert error:', upsertError);
+            return errorResponse('Failed to start hand: ' + upsertError.message);
         }
 
         // 6. Update Player Stacks in table_players

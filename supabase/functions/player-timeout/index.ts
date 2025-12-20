@@ -125,6 +125,7 @@ Deno.serve(async (req: Request) => {
                 pot: updatePayload.pot,
                 currentSeat: updatePayload.current_seat,
                 phase: updatePayload.phase,
+                turnStartTime: updatePayload.turn_started_at, // For timer sync
             },
         });
 

@@ -78,15 +78,20 @@ Deno.serve(async (req: Request) => {
             }
         }
 
+        // Set up broadcast channel early (needed for active hand handling too)
+        const channel = adminClient.channel(`table:${tableId}`);
+
         // Mark player as folded in any active hand (prevent ghost player)
         const { data: activeHand } = await adminClient
             .from('active_hands')
-            .select('id, player_states')
+            .select('id, player_states, current_seat, phase, current_bet, last_raise_amount, pots, community_cards, deck, dealer_seat, sb_seat, bb_seat, hand_number, last_aggressor_id, last_raise_was_complete, bb_has_acted, version, tables!inner(blinds_sb, blinds_bb, turn_timeout_ms)')
             .eq('table_id', tableId)
-            .is('is_hand_complete', false)
             .single();
 
         if (activeHand && activeHand.player_states) {
+            const leavingPlayerState = activeHand.player_states.find((p: any) => p.user_id === user.id);
+            const isCurrentPlayer = leavingPlayerState && activeHand.current_seat === leavingPlayerState.seat;
+
             // Update the leaving player's state to folded
             const updatedPlayerStates = activeHand.player_states.map((p: any) => {
                 if (p.user_id === user.id) {
@@ -95,16 +100,101 @@ Deno.serve(async (req: Request) => {
                 return p;
             });
 
+            // Find the next player to act if needed
+            let newCurrentSeat = activeHand.current_seat;
+            let newPhase = activeHand.phase;
+            let handComplete = false;
+
+            if (isCurrentPlayer) {
+                // Count remaining active players (not folded, not sitting out)
+                const activePlayers = updatedPlayerStates.filter((p: any) =>
+                    !p.is_folded && !p.is_sitting_out && !p.is_all_in
+                );
+
+                const allNonFolded = updatedPlayerStates.filter((p: any) => !p.is_folded && !p.is_sitting_out);
+
+                if (allNonFolded.length <= 1) {
+                    // Only one player left - hand is over
+                    handComplete = true;
+                    newCurrentSeat = -1;
+                } else if (activePlayers.length > 0) {
+                    // Find next player clockwise from current seat
+                    const seats = updatedPlayerStates
+                        .filter((p: any) => !p.is_folded && !p.is_sitting_out && !p.is_all_in)
+                        .map((p: any) => p.seat)
+                        .sort((a: number, b: number) => a - b);
+
+                    const currentIdx = seats.findIndex((s: number) => s > activeHand.current_seat);
+                    newCurrentSeat = currentIdx >= 0 ? seats[currentIdx] : seats[0];
+                } else {
+                    // All remaining players are all-in, advance to showdown
+                    handComplete = true;
+                    newCurrentSeat = -1;
+                }
+            }
+
+            const updatePayload: any = {
+                player_states: updatedPlayerStates,
+                version: (activeHand.version || 1) + 1
+            };
+
+            if (isCurrentPlayer) {
+                updatePayload.current_seat = newCurrentSeat;
+                updatePayload.turn_started_at = new Date().toISOString();
+            }
+
             await adminClient
                 .from('active_hands')
-                .update({ player_states: updatedPlayerStates })
+                .update(updatePayload)
                 .eq('id', activeHand.id);
 
-            console.log(`Marked player ${user.id} as folded in active hand ${activeHand.id}`);
+            console.log(`Marked player ${user.id} as folded in active hand ${activeHand.id}${isCurrentPlayer ? ', advanced turn to seat ' + newCurrentSeat : ''}`);
+
+            // If the leaving player was current, broadcast the fold action
+            if (isCurrentPlayer) {
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'player_action',
+                    payload: {
+                        type: 'player_action',
+                        tableId,
+                        timestamp: Date.now(),
+                        handNumber: activeHand.hand_number,
+                        playerId: user.id,
+                        playerName: 'Player',
+                        seat: leavingPlayerState.seat,
+                        action: 'fold',
+                        amount: 0,
+                        isLeave: true, // Flag to indicate this was due to leaving
+                        currentSeat: newCurrentSeat,
+                        phase: newPhase,
+                        turnStartTime: new Date().toISOString(),
+                    },
+                });
+
+                if (handComplete) {
+                    // The last remaining player wins
+                    const winner = updatedPlayerStates.find((p: any) => !p.is_folded && !p.is_sitting_out);
+                    if (winner) {
+                        await channel.send({
+                            type: 'broadcast',
+                            event: 'hand_complete',
+                            payload: {
+                                type: 'hand_complete',
+                                tableId,
+                                timestamp: Date.now(),
+                                handNumber: activeHand.hand_number,
+                                winners: [{ playerId: winner.user_id, potIndex: 0, amount: activeHand.pots?.reduce((s: number, p: any) => s + p.amount, 0) || 0, hand: null }],
+                                pots: activeHand.pots || []
+                            },
+                        });
+                    }
+                }
+            }
         }
 
         // Broadcast player left event
-        const channel = adminClient.channel(`table:${tableId}`);
+        // channel is already declared above
 
         await channel.send({
             type: 'broadcast',

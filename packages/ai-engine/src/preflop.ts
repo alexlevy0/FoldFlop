@@ -63,6 +63,11 @@ function getTableFormat(playerCount: number): TableFormat {
 
 /**
  * Check if a hand is in a range
+ * Supports:
+ * - Direct match: "AKs", "TT"
+ * - Pair ranges: "AA-22" (all pairs from 22 to AA)
+ * - Pair plus: "66+" (all pairs 66 and above: 66, 77, 88, ... AA)
+ * - Suited/offsuit plus: "A2s+" (A2s, A3s, A4s, ... AKs)
  */
 function isHandInRange(handNotation: string, range: string[]): boolean {
     // Direct match
@@ -70,40 +75,66 @@ function isHandInRange(handNotation: string, range: string[]): boolean {
         return true;
     }
 
-    // Check for range notation (e.g., "22+" means all pairs 22 and above)
-    // This is a simplified version - full implementation would need more parsing
+    const isPair = handNotation.length === 2 && handNotation[0] === handNotation[1];
+    const handHigh = RANK_VALUES[handNotation[0] as keyof typeof RANK_VALUES];
+    const handLow = handNotation.length >= 2 ? RANK_VALUES[handNotation[1] as keyof typeof RANK_VALUES] : 0;
+    const handSuited = handNotation.length === 3 ? handNotation[2] : null;
 
-    // Check for pair range (e.g., "AA-22" means all pairs)
     for (const rangeItem of range) {
+        // Check for pair range (e.g., "AA-22" or "TT-66" means pairs in that range)
         if (rangeItem.includes('-')) {
-            const [high, low] = rangeItem.split('-');
-            // Simple pair range check
-            if (high.length === 2 && low.length === 2) {
-                const highVal = RANK_VALUES[high[0] as keyof typeof RANK_VALUES];
-                const lowVal = RANK_VALUES[low[0] as keyof typeof RANK_VALUES];
+            const [highPart, lowPart] = rangeItem.split('-');
 
-                if (handNotation.length === 2) {
-                    const handVal = RANK_VALUES[handNotation[0] as keyof typeof RANK_VALUES];
-                    if (handVal >= lowVal && handVal <= highVal) {
+            // Pair range: "AA-22" or "TT-55"
+            if (highPart.length === 2 && lowPart.length === 2 &&
+                highPart[0] === highPart[1] && lowPart[0] === lowPart[1]) {
+                if (isPair) {
+                    const rangeHigh = RANK_VALUES[highPart[0] as keyof typeof RANK_VALUES];
+                    const rangeLow = RANK_VALUES[lowPart[0] as keyof typeof RANK_VALUES];
+                    const handPairVal = RANK_VALUES[handNotation[0] as keyof typeof RANK_VALUES];
+                    if (handPairVal >= rangeLow && handPairVal <= rangeHigh) {
                         return true;
                     }
                 }
             }
+
+            // Suited/offsuit range: "AKs-A2s" or "KQo-K9o"
+            if (highPart.length === 3 && lowPart.length === 3) {
+                const suitedness = highPart[2];
+                if (handSuited === suitedness && handNotation[0] === highPart[0]) {
+                    const rangeHighLow = RANK_VALUES[highPart[1] as keyof typeof RANK_VALUES];
+                    const rangeLowLow = RANK_VALUES[lowPart[1] as keyof typeof RANK_VALUES];
+                    if (handLow >= rangeLowLow && handLow <= rangeHighLow) {
+                        return true;
+                    }
+                }
+            }
+            continue;
         }
 
-        // Check for + notation (e.g., "A2s+" means A2s and above)
+        // Check for + notation
         if (rangeItem.endsWith('+')) {
             const baseHand = rangeItem.slice(0, -1);
+
+            // Pair plus: "66+" means 66, 77, 88, 99, TT, JJ, QQ, KK, AA
+            if (baseHand.length === 2 && baseHand[0] === baseHand[1]) {
+                if (isPair) {
+                    const basePairVal = RANK_VALUES[baseHand[0] as keyof typeof RANK_VALUES];
+                    const handPairVal = RANK_VALUES[handNotation[0] as keyof typeof RANK_VALUES];
+                    if (handPairVal >= basePairVal) {
+                        return true;
+                    }
+                }
+                continue;
+            }
+
+            // Suited/offsuit plus: "A2s+" means A2s, A3s, A4s, ... AKs
             if (baseHand.length === 3) {
                 const suitedness = baseHand[2];
-                if (handNotation.length === 3 && handNotation[2] === suitedness) {
-                    // Same high card, compare low card
-                    if (handNotation[0] === baseHand[0]) {
-                        const handLow = RANK_VALUES[handNotation[1] as keyof typeof RANK_VALUES];
-                        const baseLow = RANK_VALUES[baseHand[1] as keyof typeof RANK_VALUES];
-                        if (handLow >= baseLow) {
-                            return true;
-                        }
+                if (handSuited === suitedness && handNotation[0] === baseHand[0]) {
+                    const baseLow = RANK_VALUES[baseHand[1] as keyof typeof RANK_VALUES];
+                    if (handLow >= baseLow) {
+                        return true;
                     }
                 }
             }
