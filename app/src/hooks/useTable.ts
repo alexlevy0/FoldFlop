@@ -3,7 +3,7 @@
  * Manages state and actions for a single table
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSocket } from '../providers/SocketProvider';
 import { useGame } from '../providers/GameProvider';
@@ -19,6 +19,7 @@ interface UseTableReturn {
     joinTable: (seatIndex: number, buyIn: number) => Promise<{ success: boolean; error?: string }>;
     leaveTable: () => Promise<{ success: boolean; error?: string }>;
     performAction: (action: string, amount?: number) => Promise<{ success: boolean; error?: string }>;
+    refetch: () => Promise<void>;
 }
 
 export function useTable(tableId: string): UseTableReturn {
@@ -38,29 +39,31 @@ export function useTable(tableId: string): UseTableReturn {
         p => p.id === user?.id && p.isCurrentPlayer
     ) ?? false;
 
+    // Load/refresh table state
+    const loadTable = useCallback(async () => {
+        try {
+            const { data, error: fetchError } = await supabase.functions.invoke('get-table-state', {
+                body: { tableId },
+            });
+
+            if (fetchError) throw fetchError;
+
+            if (data.success && data.data) {
+                addTable(tableId, data.data);
+            }
+
+            setIsLoading(false);
+            setError(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load table');
+            setIsLoading(false);
+        }
+    }, [tableId, addTable]);
+
     // Load initial table state
     useEffect(() => {
-        async function loadTable() {
-            try {
-                const { data, error: fetchError } = await supabase.functions.invoke('get-table-state', {
-                    body: { tableId },
-                });
-
-                if (fetchError) throw fetchError;
-
-                if (data.success && data.data) {
-                    addTable(tableId, data.data);
-                }
-
-                setIsLoading(false);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load table');
-                setIsLoading(false);
-            }
-        }
-
         loadTable();
-    }, [tableId, addTable]);
+    }, [loadTable]);
 
     // Subscribe to real-time events
     useEffect(() => {
@@ -88,6 +91,9 @@ export function useTable(tableId: string): UseTableReturn {
                 return { success: false, error: data.error };
             }
 
+            // Refresh table state after successful join
+            await loadTable();
+
             return { success: true };
         } catch (err) {
             return {
@@ -95,7 +101,7 @@ export function useTable(tableId: string): UseTableReturn {
                 error: err instanceof Error ? err.message : 'Failed to join table',
             };
         }
-    }, [tableId]);
+    }, [tableId, loadTable]);
 
     const leaveTable = useCallback(async () => {
         try {
@@ -152,5 +158,6 @@ export function useTable(tableId: string): UseTableReturn {
         joinTable,
         leaveTable,
         performAction,
+        refetch: loadTable,
     };
 }

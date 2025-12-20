@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return { error: 'Username is already taken' };
         }
 
-        const { error } = await supabase.auth.signUp({
+        const { data: authData, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
@@ -94,6 +94,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
             return { error: error.message };
+        }
+
+        // Create profile manually (in case database trigger doesn't work)
+        if (authData.user) {
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert({
+                    id: authData.user.id,
+                    username: username,
+                    chips: 10000, // Starting chips (welcome bonus)
+                    welcome_bonus_claimed: true,
+                }, {
+                    onConflict: 'id',
+                });
+
+            if (profileError) {
+                console.error('Profile creation error:', profileError);
+                // Don't fail the signup, profile might have been created by trigger
+            }
         }
 
         return {};

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card as CardComponent } from './Card';
 import { colors, spacing, fontSize, borderRadius, shadows } from '../../styles/theme';
 
@@ -32,14 +32,16 @@ interface PlayerSeatProps {
 
 export function PlayerSeat({ player, position, isHero = false, seatIndex, onSeatClick }: PlayerSeatProps) {
     if (!player) {
-        // Empty seat
+        // Empty seat - clickable
         return (
-            <View
+            <TouchableOpacity
                 style={[styles.container, styles.emptySeat, getPositionStyle(position)]}
-                onTouchEnd={() => onSeatClick?.(seatIndex)}
+                onPress={() => onSeatClick?.(seatIndex)}
+                activeOpacity={0.7}
             >
-                <Text style={styles.emptySeatText}>Sit</Text>
-            </View>
+                <Text style={styles.emptySeatText}>Sit Here</Text>
+                <Text style={styles.seatNumber}>Seat {seatIndex + 1}</Text>
+            </TouchableOpacity>
         );
     }
 
@@ -167,13 +169,19 @@ const styles = StyleSheet.create({
     emptySeat: {
         backgroundColor: colors.dark.surfaceElevated,
         borderStyle: 'dashed',
-        opacity: 0.7,
-        padding: spacing.lg,
+        borderColor: colors.dark.primary,
+        opacity: 0.9,
+        padding: spacing.md,
     },
     emptySeatText: {
-        color: colors.dark.textMuted,
+        color: colors.dark.primary,
         fontSize: fontSize.sm,
         fontWeight: '600',
+    },
+    seatNumber: {
+        color: colors.dark.textMuted,
+        fontSize: fontSize.xs,
+        marginTop: 2,
     },
     activePlayer: {
         borderColor: colors.dark.primary,

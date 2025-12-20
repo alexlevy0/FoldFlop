@@ -7,8 +7,16 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl ?? 'http://localhost:54321';
-const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey ?? '';
+// Use local Supabase by default (set EXPO_PUBLIC_USE_PROD=true to use production)
+const useProd = process.env.EXPO_PUBLIC_USE_PROD === 'true';
+
+const supabaseUrl = useProd
+    ? (Constants.expoConfig?.extra?.supabaseUrlProd ?? '')
+    : (Constants.expoConfig?.extra?.supabaseUrl ?? 'http://127.0.0.1:54321');
+
+const supabaseAnonKey = useProd
+    ? (Constants.expoConfig?.extra?.supabaseAnonKeyProd ?? '')
+    : (Constants.expoConfig?.extra?.supabaseAnonKey ?? '');
 
 // Custom storage adapter for React Native
 const ExpoSecureStoreAdapter = {

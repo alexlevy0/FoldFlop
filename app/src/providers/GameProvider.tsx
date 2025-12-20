@@ -40,9 +40,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     switch (action.type) {
         case 'ADD_TABLE': {
             const newTables = new Map(state.tables);
+            // Preserve myCards from incoming state if available
+            const incomingMyCards = (action.state as any).myCards ?? [];
             newTables.set(action.tableId, {
                 ...action.state,
-                myCards: [],
+                myCards: incomingMyCards,
                 aiSuggestion: null,
                 isFullAuto: false,
                 isMyTurn: false,

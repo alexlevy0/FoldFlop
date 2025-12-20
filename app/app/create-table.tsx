@@ -44,6 +44,17 @@ export default function CreateTableScreen() {
         setError('');
 
         try {
+            // Get current user
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user) {
+                setError('You must be logged in to create a table');
+                setIsLoading(false);
+                return;
+            }
+
+            console.log('Creating table as user:', user.id);
+
             const level = TABLE_LEVELS[selectedLevel];
 
             const { data, error: createError } = await supabase
@@ -53,18 +64,23 @@ export default function CreateTableScreen() {
                     blinds_sb: level.sb,
                     blinds_bb: level.bb,
                     max_players: maxPlayers,
-                    min_buy_in: level.minBuyIn,
-                    max_buy_in: level.maxBuyIn,
+                    min_buyin: level.minBuyIn,
+                    max_buyin: level.maxBuyIn,
                     is_private: isPrivate,
                     invite_code: isPrivate ? generateInviteCode() : null,
+                    created_by: user.id,
                 })
                 .select()
                 .single();
 
-            if (createError) throw createError;
+            if (createError) {
+                console.error('Create table error:', createError);
+                throw createError;
+            }
 
             router.replace(`/table/${data.id}`);
         } catch (err) {
+            console.error('Error:', err);
             setError(err instanceof Error ? err.message : 'Failed to create table');
             setIsLoading(false);
         }

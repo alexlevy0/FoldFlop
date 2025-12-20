@@ -4,12 +4,12 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import { PlayerSeat } from './PlayerSeat';
 import { PotDisplay } from './PotDisplay';
 import { CommunityCards } from './CommunityCards';
 import { TurnTimer } from './TurnTimer';
-import { colors, spacing, borderRadius, shadows } from '../../styles/theme';
+import { colors, spacing, borderRadius, shadows, fontSize } from '../../styles/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TABLE_WIDTH = Math.min(SCREEN_WIDTH - 32, 800);
@@ -28,23 +28,25 @@ interface TablePlayer {
     isCurrentPlayer: boolean;
     hasCards: boolean;
     cards?: string[];
+    seatIndex?: number;
 }
 
-interface PokerTableProps {
-    players: (TablePlayer | null)[]; // Array of 9 seats (null = empty)
+export interface PokerTableProps {
+    players: (TablePlayer | null)[];
     communityCards: string[];
     phase: 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'waiting';
     pot: number;
     sidePots?: Array<{ amount: number; eligibleCount: number }>;
     currentPlayerIndex: number;
-    turnStartTime?: number;
+    turnStartTime?: number | null;
     turnTimeout?: number;
     heroSeatIndex?: number;
+    maxPlayers?: number;
     onSeatClick?: (seatIndex: number) => void;
     onTimeout?: () => void;
 }
 
-// Seat positions around the ellipse (for 9-max)
+// Seat positions around the ellipse (for up to 9 players)
 const SEAT_POSITIONS: Array<'top' | 'top-left' | 'top-right' | 'left' | 'right' | 'bottom' | 'bottom-left' | 'bottom-right'> = [
     'bottom',       // Seat 0 - Hero position
     'bottom-right', // Seat 1
@@ -65,12 +67,24 @@ export function PokerTable({
     currentPlayerIndex,
     turnStartTime,
     turnTimeout = 30000,
-    heroSeatIndex = 0,
+    heroSeatIndex = -1,
+    maxPlayers = 6,
     onSeatClick,
     onTimeout,
 }: PokerTableProps) {
     const gamePhase = phase === 'waiting' ? 'preflop' : phase;
     const isGameActive = phase !== 'waiting';
+
+    // Create a map of seat index to player
+    const playersBySeat = new Map<number, TablePlayer>();
+    players.forEach(p => {
+        if (p && p.seatIndex !== undefined) {
+            playersBySeat.set(p.seatIndex, p);
+        }
+    });
+
+    // Generate seats array based on maxPlayers
+    const seats = Array.from({ length: Math.min(maxPlayers, SEAT_POSITIONS.length) }, (_, i) => i);
 
     return (
         <View style={styles.container}>
@@ -80,6 +94,16 @@ export function PokerTable({
                 <View style={styles.felt}>
                     {/* Center content */}
                     <View style={styles.center}>
+                        {/* Phase indicator when waiting */}
+                        {phase === 'waiting' && (
+                            <View style={styles.waitingIndicator}>
+                                <Text style={styles.waitingText}>Waiting for players...</Text>
+                                <Text style={styles.waitingSubtext}>
+                                    {players.filter(p => p !== null).length} / {maxPlayers} seats
+                                </Text>
+                            </View>
+                        )}
+
                         {/* Pot display */}
                         {pot > 0 && (
                             <PotDisplay mainPot={pot} sidePots={sidePots} />
@@ -102,20 +126,18 @@ export function PokerTable({
                     </View>
                 </View>
 
-                {/* Player seats */}
-                {players.map((player, index) => {
-                    // Skip if more than 8 seats
-                    if (index >= SEAT_POSITIONS.length) return null;
-
-                    const position = SEAT_POSITIONS[index];
-                    const isHero = index === heroSeatIndex;
+                {/* Player seats - render ALL seats */}
+                {seats.map((seatIndex) => {
+                    const position = SEAT_POSITIONS[seatIndex];
+                    const player = playersBySeat.get(seatIndex) || null;
+                    const isHero = seatIndex === heroSeatIndex;
 
                     return (
                         <PlayerSeat
-                            key={index}
+                            key={seatIndex}
                             player={player}
                             position={position}
-                            seatIndex={index}
+                            seatIndex={seatIndex}
                             isHero={isHero}
                             onSeatClick={onSeatClick}
                         />
@@ -150,4 +172,19 @@ const styles = StyleSheet.create({
         gap: spacing.lg,
         padding: spacing.xl,
     },
+    waitingIndicator: {
+        alignItems: 'center',
+        padding: spacing.md,
+    },
+    waitingText: {
+        color: colors.dark.text,
+        fontSize: fontSize.lg,
+        fontWeight: '600',
+    },
+    waitingSubtext: {
+        color: colors.dark.textSecondary,
+        fontSize: fontSize.sm,
+        marginTop: spacing.xs,
+    },
 });
+

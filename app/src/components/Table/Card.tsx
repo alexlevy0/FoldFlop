@@ -51,6 +51,17 @@ const SIZES = {
 export function Card({ card, faceDown = false, size = 'md' }: CardProps) {
     const dimensions = SIZES[size];
 
+    // Handle undefined or invalid card
+    if (!card || card.length < 2) {
+        return (
+            <View style={[styles.card, styles.faceDown, { width: dimensions.width, height: dimensions.height }]}>
+                <View style={styles.cardBack}>
+                    <Text style={styles.cardBackText}>🃏</Text>
+                </View>
+            </View>
+        );
+    }
+
     if (faceDown) {
         return (
             <View style={[styles.card, styles.faceDown, { width: dimensions.width, height: dimensions.height }]}>
