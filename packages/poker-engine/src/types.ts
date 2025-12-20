@@ -151,6 +151,7 @@ export interface GameState {
 
     // Flags
     isHandComplete: boolean;
+    bbHasActed: boolean; // Track if BB has exercised their option preflop
     winners: HandWinner[] | null;
 }
 

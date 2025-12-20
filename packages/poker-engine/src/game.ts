@@ -77,6 +77,7 @@ export function createGameState(
         turnStartedAt: 0,
         turnTimeoutMs: tableConfig.turnTimeoutMs,
         isHandComplete: false,
+        bbHasActed: false,
         winners: null,
     };
 

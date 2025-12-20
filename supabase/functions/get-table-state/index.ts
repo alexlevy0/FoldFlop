@@ -112,7 +112,6 @@ Deno.serve(async (req: Request) => {
                 isSmallBlind: activeHand ? p.seat === activeHand.sb_seat : false,
                 isBigBlind: activeHand ? p.seat === activeHand.bb_seat : false,
                 isCurrentPlayer: activeHand ? p.seat === activeHand.current_seat : false,
-                isCurrentPlayer: activeHand ? p.seat === activeHand.current_seat : false,
                 hasCards: activeHand ? (!playerGameState?.is_folded && !playerGameState?.is_sitting_out && playerGameState?.hole_cards?.length > 0) : false,
                 cards: heroCards, // Populate cards for hero
             };
