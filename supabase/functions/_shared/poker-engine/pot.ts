@@ -114,10 +114,8 @@ export function distributePot(
         const posA = playerPositions.get(a) ?? 0;
         const posB = playerPositions.get(b) ?? 0;
         // Distance from button in clockwise direction
-        // Use 10 (or max seats) as modulus base to ensure positive result
-        const modBase = 10;
-        const distA = (posA - buttonPosition + modBase) % modBase;
-        const distB = (posB - buttonPosition + modBase) % modBase;
+        const distA = (posA - buttonPosition + 10) % 10;
+        const distB = (posB - buttonPosition + 10) % 10;
         return distA - distB;
     });
 

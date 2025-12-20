@@ -56,6 +56,7 @@ export function createGameState(
             totalBetThisHand: 0,
             isFolded: false,
             isAllIn: false,
+            hasActed: false,
         })),
         dealerIndex,
         smallBlindIndex: sbIndex,
@@ -76,7 +77,6 @@ export function createGameState(
         turnStartedAt: 0,
         turnTimeoutMs: tableConfig.turnTimeoutMs,
         isHandComplete: false,
-        bbHasActed: false,
         winners: null,
     };
 
@@ -249,6 +249,9 @@ export function processAction(
             playerAction.amount = amount;
             newState.lastRaiseAmount = raiseAmount;
             newState.currentBet = amount;
+            newState.lastRaiseWasComplete = true;
+            newState.lastAggressorId = playerId;
+
             if (player.stack === 0) player.isAllIn = true;
             break;
         }
@@ -260,9 +263,15 @@ export function processAction(
             // Update raise amount if this is a raise
             if (newBet > state.currentBet) {
                 const raiseAmount = newBet - state.currentBet;
-                // Only update last raise if it's a full raise
+                // Check if it's a full raise
                 if (raiseAmount >= newState.lastRaiseAmount) {
                     newState.lastRaiseAmount = raiseAmount;
+                    newState.lastRaiseWasComplete = true;
+                    newState.lastAggressorId = playerId;
+                } else {
+                    // Incomplete raise (all-in below min raise)
+                    newState.lastRaiseWasComplete = false;
+                    // lastAggressorId remains the same as this is not a new full raise
                 }
                 newState.currentBet = newBet;
             }
@@ -275,6 +284,9 @@ export function processAction(
             break;
         }
     }
+
+    // Mark player as having acted
+    player.hasActed = true;
 
     players[playerIndex] = player;
     newState.players = players;
@@ -305,8 +317,8 @@ export function processAction(
 function advancePhase(state: GameState): GameState {
     let newState = { ...state };
 
-    // Reset current bets for all players
-    const players = newState.players.map(p => ({ ...p, currentBet: 0 }));
+    // Reset current bets and acted status for all players
+    const players = newState.players.map(p => ({ ...p, currentBet: 0, hasActed: false }));
     newState.players = players;
     newState.currentBet = 0;
     newState.lastRaiseAmount = 0;

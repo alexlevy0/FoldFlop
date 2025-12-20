@@ -73,6 +73,7 @@ export interface Player {
     isAllIn: boolean;
     isSittingOut: boolean;
     isDisconnected: boolean;
+    hasActed: boolean; // Computed flag to track if player has acted in current round
 }
 
 // Game phases
@@ -150,7 +151,6 @@ export interface GameState {
 
     // Flags
     isHandComplete: boolean;
-    bbHasActed: boolean; // For BB option tracking in preflop
     winners: HandWinner[] | null;
 }
 

@@ -55,7 +55,6 @@ export function createGameState(
             currentBet: 0,
             totalBetThisHand: 0,
             isFolded: false,
-            isFolded: false,
             isAllIn: false,
             hasActed: false,
         })),
@@ -78,7 +77,6 @@ export function createGameState(
         turnStartedAt: 0,
         turnTimeoutMs: tableConfig.turnTimeoutMs,
         isHandComplete: false,
-        bbHasActed: false,
         winners: null,
     };
 
@@ -107,6 +105,7 @@ export function startHand(state: GameState): GameState {
 
     return newState;
 }
+
 
 /**
  * Post small and big blinds
@@ -158,7 +157,13 @@ function postBlinds(state: GameState): GameState {
 function dealHoleCards(state: GameState): GameState {
     const newState = { ...state };
     let deck = [...state.deck];
-    // We start with the existing players array from state
+    // We start with the existing players array (already shallow copied in postBlinds return, but we want fresh refs if we modify)
+    // Actually, we should map again to be safe and clean.
+    // However, dealHoleCards is called right after postBlinds which returns a fresh players array.
+    // But dealing cards happens in rounds, so we need to validly update the array.
+
+    // We can't map once because the deck changes sequentially.
+    // So we'll clone the players array (shallow) and then replace the specific player objects we modify.
     const players = [...state.players];
 
     // Deal one card at a time, starting from left of dealer
@@ -244,9 +249,9 @@ export function processAction(
             playerAction.amount = amount;
             newState.lastRaiseAmount = raiseAmount;
             newState.currentBet = amount;
-            // Since this is a raise, other players' hasActed status is now insufficient (they must call),
-            // but we don't reset their hasActed flag. Instead, isRoundComplete checks (hasActed && betsMatch).
-            // When they call, set hasActed=true.
+            newState.lastRaiseWasComplete = true;
+            newState.lastAggressorId = playerId;
+
             if (player.stack === 0) player.isAllIn = true;
             break;
         }
@@ -278,11 +283,6 @@ export function processAction(
             playerAction.amount = newBet;
             break;
         }
-    }
-
-    // Mark BB as having acted if this is Preflop
-    if (newState.phase === 'preflop' && playerIndex === newState.bigBlindIndex) {
-        newState.bbHasActed = true;
     }
 
     // Mark player as having acted
@@ -394,7 +394,6 @@ function dealCommunityCards(state: GameState, count: number): GameState {
 function endHand(state: GameState): GameState {
     const newState = { ...state };
     newState.isHandComplete = true;
-    newState.currentPlayerIndex = -1; // No one acts in showdown
 
     // Calculate final pots
     const pots = calculatePots(state.players);
