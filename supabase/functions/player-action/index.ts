@@ -167,12 +167,31 @@ Deno.serve(async (req: Request) => {
 
             await Promise.all(stackUpdates);
 
-            // 2. Delete active hand so the table goes back to 'waiting' state
-            // This prevents "Zombie Hands" where the game keeps thinking it's ongoing
-            await adminClient
+            // 2. DO NOT delete the active hand yet.
+            // Leave it in the DB so clients can fetch the result (Showdown) via REST
+            // The next 'deal-hand' call will clean up this old hand.
+
+            // Update the hand in DB with final state (winners, etc.)
+            const { error: updateError } = await adminClient
                 .from('active_hands')
-                .delete()
+                .update({
+                    round: newGameState.phase,
+                    community_cards: newGameState.communityCards,
+                    current_seat: -1, // No one's turn
+                    current_bet: 0,
+                    last_raise_amount: 0,
+                    last_aggressor_id: null,
+                    pots: newGameState.pots,
+                    player_states: mapEngineToDb(newGameState, activeHand).player_states,
+                    winners: newGameState.winners, // Store winners!
+                    is_hand_complete: true,
+                    updated_at: new Date().toISOString(),
+                })
                 .eq('id', activeHand.id);
+
+            if (updateError) {
+                console.error('Failed to update completed hand:', updateError);
+            }
 
         } else {
             // Game continues - Update DB with new state
