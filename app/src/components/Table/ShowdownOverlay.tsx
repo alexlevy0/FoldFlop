@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 1,
         borderColor: colors.dark.accent,
-        ...shadows.xl,
+        ...shadows.lg,
     },
     headerContainer: {
         alignItems: 'center',

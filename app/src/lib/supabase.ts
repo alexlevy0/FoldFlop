@@ -51,5 +51,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
 });
 
+// Export URL and key for direct API access (e.g., sendBeacon)
+export const SUPABASE_URL = supabaseUrl;
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+
 // Export types
 export type { User, Session } from '@supabase/supabase-js';

@@ -222,6 +222,9 @@ export interface TablePlayerState {
     isSittingOut: boolean;
     isDisconnected: boolean;
     isCurrentPlayer: boolean;
+    isDealer?: boolean;
+    isSmallBlind?: boolean;
+    isBigBlind?: boolean;
     hasCards: boolean; // True if dealt cards (but we don't see them)
     cards?: string[]; // Only visible at showdown
 }

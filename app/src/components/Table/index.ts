@@ -7,3 +7,5 @@ export { CommunityCards } from './CommunityCards';
 export { ActionButtons } from './ActionButtons';
 export { AICopilotToggle } from './AICopilotToggle';
 export { PokerTable } from './PokerTable';
+export { MiniPokerTable } from './MiniPokerTable';
+export { EmbeddedTableView } from './EmbeddedTableView';

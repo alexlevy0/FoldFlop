@@ -11,7 +11,7 @@ import { ShowdownOverlay } from '../../src/components/Table/ShowdownOverlay';
 import { useTable } from '../../src/hooks/useTable';
 import { useAuth } from '../../src/providers/AuthProvider';
 import { useAI } from '../../src/hooks/useAI';
-import { supabase } from '../../src/lib/supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../../src/lib/supabase';
 import { colors, spacing, fontSize, borderRadius } from '../../src/styles/theme';
 import { evaluateHand, Card } from '@foldflop/poker-engine';
 
@@ -159,7 +159,7 @@ export default function TableScreen() {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (isSeated && id) {
                 // Use sendBeacon for reliable async request during page unload
-                const url = `${supabase.supabaseUrl}/functions/v1/leave-table`;
+                const url = `${SUPABASE_URL}/functions/v1/leave-table`;
                 const data = JSON.stringify({ tableId: id });
 
                 // Try sendBeacon first (most reliable for unload)
@@ -171,7 +171,7 @@ export default function TableScreen() {
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', url, false); // false = synchronous
                     xhr.setRequestHeader('Content-Type', 'application/json');
-                    xhr.setRequestHeader('Authorization', `Bearer ${supabase.supabaseKey}`);
+                    xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
                     try { xhr.send(data); } catch { }
                 }
             }
@@ -481,7 +481,7 @@ export default function TableScreen() {
     }, [leaveTable, refetch]);
 
     // Transform players for PokerTable component
-    const tablePlayers = tableState?.players?.map((player, index) => {
+    const tablePlayers = tableState?.players?.map((player: any, index) => {
         if (!player) return null;
         return {
             id: player.id,
