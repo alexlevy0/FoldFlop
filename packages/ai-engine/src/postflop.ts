@@ -131,7 +131,10 @@ interface DrawAnalysis {
     hasStraightDraw: boolean;
     hasOpenEnded: boolean;
     hasGutshot: boolean;
+    hasBackdoorFlush: boolean;    // 3 to a flush (adds ~1.5 outs)
+    hasBackdoorStraight: boolean; // 3 to a straight (adds ~1 out)
     outs: number;
+    totalOuts: number; // Including backdoor outs
 }
 
 export function analyzeDraws(holeCards: Card[], communityCards: Card[]): DrawAnalysis {
@@ -146,6 +149,7 @@ export function analyzeDraws(holeCards: Card[], communityCards: Card[]): DrawAna
     }
     const maxSuitCount = Math.max(...suitCounts.values());
     const hasFlushDraw = maxSuitCount === 4;
+    const hasBackdoorFlush = maxSuitCount === 3 && communityCards.length <= 3; // Only on flop
 
     // Straight draw check
     const uniqueRanks = [...new Set(ranks)].sort((a, b) => a - b);
@@ -191,6 +195,24 @@ export function analyzeDraws(holeCards: Card[], communityCards: Card[]): DrawAna
 
     const hasStraightDraw = hasOpenEnded || hasGutshot;
 
+    // Check for backdoor straight (3 cards within 5 ranks on flop only)
+    let hasBackdoorStraight = false;
+    if (communityCards.length <= 3 && !hasStraightDraw) {
+        for (let target = 2; target <= 14; target++) {
+            let count = 0;
+            for (let i = 0; i < 5; i++) {
+                const checkRank = target + i > 14 ? target + i - 13 : target + i;
+                if (uniqueRanks.includes(checkRank) || (checkRank === 1 && uniqueRanks.includes(14))) {
+                    count++;
+                }
+            }
+            if (count === 3) {
+                hasBackdoorStraight = true;
+                break;
+            }
+        }
+    }
+
     // Calculate outs
     let outs = 0;
     if (hasFlushDraw) outs += 9;
@@ -202,12 +224,22 @@ export function analyzeDraws(holeCards: Card[], communityCards: Card[]): DrawAna
         outs -= 2; // Approximate overlap
     }
 
+    // Calculate total outs including backdoor draws
+    // Backdoor draws add fractional outs: ~1.5 for flush, ~1 for straight
+    let backdoorOuts = 0;
+    if (hasBackdoorFlush) backdoorOuts += 1.5;
+    if (hasBackdoorStraight) backdoorOuts += 1;
+    const totalOuts = outs + backdoorOuts;
+
     return {
         hasFlushDraw,
         hasStraightDraw,
         hasOpenEnded,
         hasGutshot,
+        hasBackdoorFlush,
+        hasBackdoorStraight,
         outs,
+        totalOuts,
     };
 }
 
@@ -269,7 +301,7 @@ export function getPostflopSuggestion(
     // Check if we should c-bet (first to act post-flop on flop)
     const isFlop = communityCards.length === 3;
     const isFirstToAct = state.currentBet === 0;
-    const wasAggressor = player.currentBet > 0 || state.lastAggressorId === player.id;
+    const wasAggressor = player.currentBet > 0; // Simplified: consider aggressor if we have money in pot
 
     // --- C-BET LOGIC ---
     if (isFlop && isFirstToAct && validActions.canBet) {
@@ -302,6 +334,40 @@ export function getPostflopSuggestion(
                 confidence: 0.55,
                 reason: 'Bluffing on dry board',
             };
+        }
+    }
+
+    // --- RIVER-SPECIFIC STRATEGY ---
+    // On the river, no more draws - polarize to value/bluff only
+    const isRiver = communityCards.length === 5;
+    if (isRiver) {
+        // With strong hands, bet for value
+        if (effectiveStrength > 0.6 && validActions.canBet && isFirstToAct) {
+            const betSize = Math.min(currentPot * 0.75, validActions.maxBet);
+            return {
+                action: 'bet',
+                amount: Math.max(validActions.minBet, Math.round(betSize)),
+                confidence: 0.8,
+                reason: `River value bet with ${evaluatedHand?.description || 'strong hand'}`,
+            };
+        }
+
+        // Missed draws on river - bluff ~25% of the time for balance
+        const missedDraw = (drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded) &&
+            evaluatedHand?.rank === 'high_card';
+        if (missedDraw && isFirstToAct && validActions.canBet && Math.random() < 0.25) {
+            const betSize = Math.min(currentPot * 0.66, validActions.maxBet);
+            return {
+                action: 'bet',
+                amount: Math.max(validActions.minBet, Math.round(betSize)),
+                confidence: 0.5,
+                reason: 'Bluffing missed draw on river',
+            };
+        }
+
+        // With weak hands facing a bet on river - fold more often (no outs left)
+        if (effectiveStrength < 0.4 && toCall > 0 && !validActions.canCheck) {
+            return { action: 'fold', confidence: 0.75, reason: 'Weak hand on river, no more cards' };
         }
     }
 
@@ -355,15 +421,61 @@ export function getPostflopSuggestion(
         }
     }
 
-    // MEDIUM (effective strength > 0.35 or has draws) - Check/call
+    // --- MEDIUM HANDS (effective strength > 0.35 or has draws) ---
+    // But be CAREFUL about calling big bets with marginal holdings
     if (effectiveStrength > 0.35 || drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded) {
-        const drawEquity = drawAnalysis.outs * 0.02;
+        // Calculate equity: hand strength + draw equity (use totalOuts for backdoor consideration)
+        // Use ~4% per out on flop (seeing 2 cards), ~2% per out on turn/river (1 card)
+        const outsMultiplier = communityCards.length === 3 ? 0.04 : 0.02;
+        const drawEquity = drawAnalysis.totalOuts * outsMultiplier;
         const combinedEquity = handStrength + drawEquity;
+
+        // Check the bet size relative to pot
+        const betToPotRatio = toCall / Math.max(currentPot - toCall, 1);
+
+        // --- SEMI-BLUFF LOGIC ---
+        // With 12+ outs (strong combo draw), consider raising as semi-bluff
+        if (drawAnalysis.totalOuts >= 12 && validActions.canRaise && state.currentBet > 0) {
+            // Semi-bluff ~35% of the time with monster draws
+            if (Math.random() < 0.35) {
+                const raiseSize = Math.min(currentPot * 0.75, validActions.maxRaise);
+                return {
+                    action: 'raise',
+                    amount: Math.max(validActions.minRaise, Math.round(raiseSize)),
+                    confidence: 0.7,
+                    reason: `Semi-bluffing with ${drawAnalysis.totalOuts.toFixed(0)} outs`,
+                };
+            }
+        }
 
         if (validActions.canCheck) {
             return { action: 'check', confidence: 0.7, reason: 'Medium hand, checking' };
         }
 
+        // --- SPR-BASED ADJUSTMENTS ---
+        // Low SPR (< 3): More willing to commit with marginal hands
+        // High SPR (> 10): Need stronger hands
+        let equityThreshold = 0.35; // Default for pot-sized bets
+        if (spr < 3) {
+            equityThreshold = 0.28; // More loose when committed
+        } else if (spr > 10) {
+            equityThreshold = 0.40; // Tighter when deep
+        }
+
+        // If facing a big bet (> 75% pot), need good equity to call
+        if (betToPotRatio > 0.75) {
+            if (combinedEquity > equityThreshold) {
+                return {
+                    action: 'call',
+                    confidence: 0.6,
+                    reason: `Calling big bet with ${(combinedEquity * 100).toFixed(0)}% equity (SPR: ${spr.toFixed(1)})`,
+                };
+            }
+            // Not enough equity for big bet - fold
+            return { action: 'fold', confidence: 0.7, reason: 'Equity too low vs big bet' };
+        }
+
+        // Smaller bet - check if odds are good
         if (validActions.canCall && combinedEquity > potOdds) {
             return {
                 action: 'call',
@@ -371,20 +483,41 @@ export function getPostflopSuggestion(
                 reason: `Drawing hand with ${drawAnalysis.outs} outs, odds are good`,
             };
         }
+
+        // Odds aren't good enough
+        if (validActions.canCall && combinedEquity <= potOdds && combinedEquity < 0.25) {
+            return { action: 'fold', confidence: 0.6, reason: 'Pot odds not good enough for draw' };
+        }
     }
 
-    // WEAK - Check if possible, otherwise fold
+    // --- WEAK HANDS (no pair, no significant draw) ---
+    // Check if possible, otherwise fold
     if (validActions.canCheck) {
         return { action: 'check', confidence: 0.8, reason: 'Weak hand, checking' };
     }
 
-    // Small bet - might call with draws
-    if (validActions.canCall && toCall < currentPot * 0.25 && (drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded)) {
-        return { action: 'call', confidence: 0.5, reason: 'Small bet, calling with draw' };
+    // Check our actual made hand - if we have NOTHING (high card only), fold to any bet
+    // evaluatedHand.rank is a HandRank type: 'high_card', 'pair', etc.
+    const hasNoPair = !evaluatedHand || evaluatedHand.rank === 'high_card';
+    const hasNoDraw = !drawAnalysis.hasFlushDraw && !drawAnalysis.hasOpenEnded && !drawAnalysis.hasGutshot;
+
+    if (hasNoPair && hasNoDraw) {
+        // Complete air - fold to any bet
+        return { action: 'fold', confidence: 0.85, reason: 'No pair, no draw - folding to aggression' };
     }
 
-    // Default fold
-    return { action: 'fold', confidence: 0.75, reason: 'Weak hand facing aggression' };
+    // Small bet with gutshot might call
+    if (validActions.canCall && toCall < currentPot * 0.25 && drawAnalysis.hasGutshot) {
+        return { action: 'call', confidence: 0.45, reason: 'Small bet, calling with gutshot' };
+    }
+
+    // Small bet with flush draw or OESD - call
+    if (validActions.canCall && toCall < currentPot * 0.4 && (drawAnalysis.hasFlushDraw || drawAnalysis.hasOpenEnded)) {
+        return { action: 'call', confidence: 0.55, reason: 'Reasonable bet, calling with good draw' };
+    }
+
+    // Default fold - we have nothing and facing a bet
+    return { action: 'fold', confidence: 0.75, reason: 'Weak hand facing aggression - folding' };
 }
 
 /**
