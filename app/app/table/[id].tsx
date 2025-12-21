@@ -153,14 +153,55 @@ export default function TableScreen() {
     const pot = (tableState as any)?.pot ?? 0;
     const turnId = `${isMyTurn}-${phase}-${pot}-${currentBet}`;
 
-    // Cleanup on unmount
+    // Cleanup on unmount + auto-leave on tab close
     useEffect(() => {
+        // Handle tab close / navigate away - leave table automatically
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isSeated && id) {
+                // Use sendBeacon for reliable async request during page unload
+                const url = `${supabase.supabaseUrl}/functions/v1/leave-table`;
+                const data = JSON.stringify({ tableId: id });
+
+                // Try sendBeacon first (most reliable for unload)
+                if (navigator.sendBeacon) {
+                    const blob = new Blob([data], { type: 'application/json' });
+                    navigator.sendBeacon(url, blob);
+                } else {
+                    // Fallback: synchronous XHR (blocks unload briefly)
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', url, false); // false = synchronous
+                    xhr.setRequestHeader('Content-Type', 'application/json');
+                    xhr.setRequestHeader('Authorization', `Bearer ${supabase.supabaseKey}`);
+                    try { xhr.send(data); } catch { }
+                }
+            }
+        };
+
+        // Also handle visibility change (mobile tab switch, etc.)
+        const handleVisibilityChange = () => {
+            // Optional: could also leave when tab becomes hidden for extended period
+            // For now, just log it
+            if (document.visibilityState === 'hidden') {
+                console.log('[Table] Tab hidden');
+            }
+        };
+
+        // Add event listeners (web only)
+        if (typeof window !== 'undefined') {
+            window.addEventListener('beforeunload', handleBeforeUnload);
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
+
         return () => {
             if (aiIntervalRef.current) {
                 clearInterval(aiIntervalRef.current);
             }
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('beforeunload', handleBeforeUnload);
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }
         };
-    }, []);
+    }, [isSeated, id]);
 
     // AI Auto-Play - detect new turn and start countdown
     useEffect(() => {

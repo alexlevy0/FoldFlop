@@ -1,0 +1,12 @@
+{
+    "installCommand": "pnpm install",
+    "buildCommand": "pnpm --filter @foldflop/poker-engine build && pnpm --filter @foldflop/ai-engine build && cd app && pnpm exec expo export --platform web",
+    "outputDirectory": "app/dist",
+    "framework": null,
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/"
+        }
+    ]
+}
