@@ -181,8 +181,11 @@ export function ActionButtons({
                     <Text style={[styles.buttonText, !canBet && !canRaise && styles.buttonTextDisabled]}>
                         {showSlider ? 'Confirm' : canBet ? 'Bet' : 'Raise'}
                     </Text>
-                    {showSlider && (
-                        <Text style={styles.buttonAmount}>{raiseAmount.toLocaleString()}</Text>
+                    {/* Show current raise amount when slider is open, or min-raise when closed */}
+                    {(canBet || canRaise) && (
+                        <Text style={styles.buttonAmount}>
+                            {showSlider ? raiseAmount.toLocaleString() : `Min: ${minRaise.toLocaleString()}`}
+                        </Text>
                     )}
                 </TouchableOpacity>
 

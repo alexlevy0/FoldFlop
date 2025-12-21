@@ -103,7 +103,11 @@ export default function TableScreen() {
     const canRaise = isMyTurn && currentBet > 0;
     const minBet = (tableState as any)?.blinds?.bb ?? 10;
     const maxBet = heroPlayer?.stack ?? 0;
-    const minRaise = currentBet * 2;
+
+    // Correct min-raise calculation:
+    // minRaise = currentBet + lastRaiseAmount (at minimum the big blind)
+    const lastRaiseAmount = (tableState as any)?.lastRaiseAmount ?? minBet;
+    const minRaise = Math.max(currentBet + lastRaiseAmount, currentBet + minBet);
     const maxRaise = heroPlayer?.stack ?? 0;
 
     // AI countdown and action history state

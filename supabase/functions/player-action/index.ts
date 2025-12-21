@@ -202,6 +202,20 @@ Deno.serve(async (req: Request) => {
                 },
             });
 
+            // 3. Delete the active_hands entry to reset the table to 'waiting' phase
+            // This allows the client to trigger a new deal automatically
+            const { error: deleteError } = await adminClient
+                .from('active_hands')
+                .delete()
+                .eq('id', activeHand.id);
+
+            if (deleteError) {
+                console.error('Failed to delete completed hand:', deleteError);
+                // Non-fatal: hand is complete, just log it
+            } else {
+                console.log(`Hand ${activeHand.hand_number} completed and deleted from active_hands`);
+            }
+
         } else {
             // Game continues - Update DB with new state FIRST
             const { data: updatedData, error: updateError } = await adminClient

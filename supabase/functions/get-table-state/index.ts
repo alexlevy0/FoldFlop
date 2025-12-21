@@ -148,6 +148,7 @@ Deno.serve(async (req: Request) => {
             currentPlayerIndex: activeHand?.current_seat ?? -1,
             turnStartTime: activeHand?.turn_started_at || null,
             handNumber: activeHand?.hand_number || 0,
+            lastRaiseAmount: activeHand?.last_raise_amount || 0, // For min-raise calculation
             myCards: [], // Will be set below for the requesting user
         };
 
